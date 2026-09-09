@@ -125,21 +125,29 @@ static fixed_t fixed_sqr(fixed_t a)
 // "Optimizations" section):
 //   main cardioid: q = (cx-1/4)^2 + cy^2 ; in set if q*(q+(cx-1/4)) < cy^2/4
 //   period-2 bulb: (cx+1)^2 + cy^2 < 1/16
+//
+// Takes xm/xm2/xp1_2/cy2 as ALREADY-COMPUTED arguments rather than raw
+// cx/cy (2026-09-09) -- xm=cx-1/4, xm2=xm^2 and xp1_2=(cx+1)^2 depend
+// only on the column, cy2=cy^2 only on the row, but this function used
+// to be called once per PIXEL, recomputing all of them from scratch
+// every time: cy2 alone was being recomputed 192x more often than
+// needed (once per column instead of once for the whole row), and
+// xm2/xp1_2 128x more often (once per row instead of once per
+// column). mandelbrot_generate() now hoists these into a per-row table
+// (cy2_table[]) and per-column locals, computed once each -- see its
+// own comments. Pure loop-invariant hoisting, no new arithmetic or
+// asm, so none of the fixed_mul()/fixed_sqr() risk above applies.
 // ---------------------------------------------------------------
-static char mandel_in_cardioid_or_bulb(fixed_t cx, fixed_t cy)
+static char mandel_in_cardioid_or_bulb(fixed_t xm, fixed_t xm2, fixed_t xp1_2, fixed_t cy2)
 {
-    fixed_t xm = (fixed_t)(cx - FIXED_ONE / 4);   // cx - 0.25
-    fixed_t cy2 = fixed_sqr(cy);
-    fixed_t q = (fixed_t)(fixed_sqr(xm) + cy2);
+    fixed_t q = (fixed_t)(xm2 + cy2);
 
     if ((long)fixed_mul(q, (fixed_t)(q + xm)) < ((long)cy2 >> 2))
         return 1;
 
-    {
-        fixed_t xp1 = (fixed_t)(cx + FIXED_ONE);
-        if ((long)(fixed_sqr(xp1) + cy2) < (long)(FIXED_ONE / 16))
-            return 1;
-    }
+    if ((long)(xp1_2 + cy2) < (long)(FIXED_ONE / 16))
+        return 1;
+
     return 0;
 }
 
@@ -158,13 +166,17 @@ static char mandel_in_cardioid_or_bulb(fixed_t cx, fixed_t cy)
 // -- this is the straightforward 3-multiplies-per-iteration version,
 // just with the cardioid/bulb check above skipping the loop entirely
 // for points that would otherwise run it to completion every time.
+//
+// xm/xm2/xp1_2/cy2: the cardioid/bulb check's already-hoisted terms
+// (see mandel_in_cardioid_or_bulb()'s own comment) -- passed straight
+// through, not recomputed here.
 // ---------------------------------------------------------------
-static unsigned char mandel_iterate(fixed_t cx, fixed_t cy)
+static unsigned char mandel_iterate(fixed_t cx, fixed_t cy, fixed_t xm, fixed_t xm2, fixed_t xp1_2, fixed_t cy2)
 {
     fixed_t zx = 0, zy = 0;
     unsigned char i;
 
-    if (mandel_in_cardioid_or_bulb(cx, cy))
+    if (mandel_in_cardioid_or_bulb(xm, xm2, xp1_2, cy2))
         return MANDEL_MAX_ITER;
 
     for (i = 0; i < MANDEL_MAX_ITER; i++)
@@ -197,6 +209,11 @@ static unsigned char mandel_color(unsigned char iter)
         return 0;
     return (unsigned char)(1 + ((unsigned)iter * 15) / MANDEL_MAX_ITER);
 }
+
+// One entry per row (y=0..127, see MANDEL_Y0's comment on why only the
+// top half is ever needed) -- see mandelbrot_generate()'s own comment
+// on why this is precomputed once instead of once per column.
+static fixed_t cy2_table[UPIC_HEIGHT / 2];
 
 void mandelbrot_generate(void)
 {
@@ -240,6 +257,18 @@ void mandelbrot_generate(void)
     cia1.tods = 0;
     cia1.todm = 0;
 
+    // cy^2 depends only on the row, not the column -- precompute it
+    // once here instead of leaving mandel_in_cardioid_or_bulb() (via
+    // mandel_iterate()) to recompute it from scratch for every one of
+    // the 192 columns that share the same row (see that function's own
+    // comment). 128 entries * 2 bytes = 256 bytes, comfortably inside
+    // budget.
+    for (y = 0; y < UPIC_HEIGHT / 2; y++)
+    {
+        fixed_t cy = (fixed_t)(MANDEL_Y0 + (long)y * MANDEL_DY);
+        cy2_table[y] = fixed_sqr(cy);
+    }
+
     for (bytecol = 0; bytecol < UPIC_WIDTH / 2; bytecol++)
     {
         fixed_t cx0 = (fixed_t)(MANDEL_X0 + (long)(bytecol * 2) * MANDEL_DX);
@@ -247,6 +276,18 @@ void mandelbrot_generate(void)
         volatile char *dst = (bytecol < UPIC_RELOC_COLS)
             ? &upic_buffer_reloc[(unsigned)bytecol * UPIC_HEIGHT]
             : &upic_buffer[(unsigned)(bytecol - UPIC_RELOC_COLS) * UPIC_HEIGHT];
+
+        // Cardioid/bulb terms that depend only on this column's cx,
+        // not on the row -- same hoisting idea as cy2_table above, the
+        // other axis. Computed once per column (twice -- cx0 and cx1
+        // are two separate pixel columns packed into this byte-column,
+        // see upic_viewer.h) instead of once per pixel.
+        fixed_t xm0    = (fixed_t)(cx0 - FIXED_ONE / 4);
+        fixed_t xm0_2  = fixed_sqr(xm0);
+        fixed_t xp10_2 = fixed_sqr((fixed_t)(cx0 + FIXED_ONE));
+        fixed_t xm1    = (fixed_t)(cx1 - FIXED_ONE / 4);
+        fixed_t xm1_2  = fixed_sqr(xm1);
+        fixed_t xp11_2 = fixed_sqr((fixed_t)(cx1 + FIXED_ONE));
 
         // Only the top half (y=0..127) is actually iterated -- each
         // row's result is mirrored straight into its exact opposite
@@ -257,8 +298,9 @@ void mandelbrot_generate(void)
         for (y = 0; y < UPIC_HEIGHT / 2; y++)
         {
             fixed_t cy = (fixed_t)(MANDEL_Y0 + (long)y * MANDEL_DY);
-            unsigned char even = mandel_color(mandel_iterate(cx0, cy));
-            unsigned char odd  = mandel_color(mandel_iterate(cx1, cy));
+            fixed_t cy2 = cy2_table[y];
+            unsigned char even = mandel_color(mandel_iterate(cx0, cy, xm0, xm0_2, xp10_2, cy2));
+            unsigned char odd  = mandel_color(mandel_iterate(cx1, cy, xm1, xm1_2, xp11_2, cy2));
             unsigned char packed = (unsigned char)((odd << 4) | even);
             dst[y] = packed;
             dst[UPIC_HEIGHT - 1 - y] = packed;
