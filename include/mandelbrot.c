@@ -4,7 +4,6 @@ See mandelbrot.h for API documentation and current status.
 ******************************************************************/
 
 #include <c64/cia.h>
-#include <fixmath.h>
 #include "mandelbrot.h"
 #include "progress.h"
 
@@ -33,58 +32,161 @@ typedef int fixed_t;
 #define FIXED_ONE   (1 << FIXED_SHIFT)          // 1.0 in Q5.11 = 2048
 #define FIXED4      (4 << FIXED_SHIFT)          // 4.0 in Q5.11 -- escape-radius-squared threshold
 
-// a*b for two Q5.11 values: 32-bit intermediate product via Oscar64's
-// own lmul16s() (fixmath.h -- a real 16x16->32 signed multiply, half
-// the shift/add steps of the generic (long)a*(long)b path this used
-// to be, which promotes both operands to 32-bit first and so compiles
-// to a full 32x32->32 multiply for no reason), then rescale back to
-// Q5.11 with an arithmetic (sign-preserving) right shift.
+// ---------------------------------------------------------------
+// Quarter-square multiply table: sq_table[n] = floor(n*n/4) for
+// n=0..510 (entry 511 unused padding, to a clean 512 entries).
+// Backs the classic identity a*b = floor((a+b)^2/4) - floor((a-b)^2/4)
+// -- EXACT for any integers a,b, since a+b and a-b always share parity
+// (their sum is 2a), so whichever square loses a remainder to the
+// floor, both lose the same amount and it cancels in the subtraction.
+// Independently verified exhaustively in Python (all 65,536 8-bit
+// unsigned pairs, all 65,536 values for the squaring composition,
+// 200,000+ random pairs for the full 16x16 signed composition) before
+// writing any of the code below -- see CREDITS.md.
 //
-// A quarter-square-table multiply (see include/fastmul.c in git
-// history, removed 2026-09-09) was tried here first -- independently
-// verified correct (exhaustive Python check against all 65,536 8-bit
-// pairs and 200,000 random 16-bit signed pairs, and the isolated
-// single-call case matched on real hardware too) but gave silently
-// WRONG results specifically when called repeatedly with caller-side
-// locals that needed to stay live across several calls (confirmed via
-// .asm inspection: the multiply's own internal scratch temporaries
-// landed on the SAME statically-allocated zero-page slots the caller
-// was using for its own locals). __noinline, volatile on the caller's
-// locals, and __dynstack were all tried and confirmed (via identical
-// byte-for-byte hardware output) to NOT fix it. Research into this
-// (2026-09-09, delegated to a research pass -- see CREDITS.md) traced
-// it to a documented, currently-open Oscar64 compiler bug class
-// (upstream issues #318/#361 on drmortalwombat/oscar64): a function
-// only gets Oscar64's default static, whole-program-shared zero-page
-// frame if every function it calls, transitively, is also eligible --
-// __dynstack only protects the one function it's applied to, not
-// deeper callees, which is consistent with why it didn't help when
-// applied only at the top of that 5-level call chain (multiply ->
-// muls16 -> mulu16 -> 4x qmul8 -> 2x qsub8). lmul16s()/lmul16u() below
-// avoid the whole problem by being ONE flat __native asm function each
-// (see fixmath.c) -- no nested C calls, nothing but their own named
-// parameters and the fixed `accu` scratch area. Oscar64's own official
-// fractal sample (samples/fractals/mbfixed.c) calls this exact family
-// repeatedly from inside a live escape-time loop with caller locals
-// that must survive multiple calls -- the same calling shape used
-// here, and known-working.
+// Placed in `moddata` (2026-09-09), NOT the default `data` section --
+// this 1024-byte table doesn't fit in "main"'s own data budget (only
+// ~300 bytes free there -- confirmed by a real build error, not a
+// guess) but $E800-$FFFF's upiccode region (modcode/moddata/modbss,
+// reserved for modplay's audio code in the sibling upicmodplay build,
+// entirely unused by this one) has ~3.7KB genuinely free, confirmed by
+// finding zero objects placed past $F159 in the .map. Safe to read
+// during mandelbrot_generate() specifically because rombank_out()
+// (MMAP_NO_ROM) already runs before it, for the same reason
+// upic_buffer_reloc ($E000-$EFFF) already needs and gets that -- see
+// upic_viewer.h. moddata/modcode already declared via #pragma
+// section(...) in upic_viewer.c, compiled first in main.c's #pragma
+// compile chain -- no need to redeclare here, just place into it.
+// ---------------------------------------------------------------
+#pragma data(moddata)
+static const unsigned sq_table[512] = {
+    0,0,1,2,4,6,9,12,16,20,25,30,36,42,49,56,64,72,81,90,100,110,121,132,144,156,169,182,196,210,225,
+    240,256,272,289,306,324,342,361,380,400,420,441,462,484,506,529,552,576,600,625,650,676,702,729,
+    756,784,812,841,870,900,930,961,992,1024,1056,1089,1122,1156,1190,1225,1260,1296,1332,1369,1406,
+    1444,1482,1521,1560,1600,1640,1681,1722,1764,1806,1849,1892,1936,1980,2025,2070,2116,2162,2209,
+    2256,2304,2352,2401,2450,2500,2550,2601,2652,2704,2756,2809,2862,2916,2970,3025,3080,3136,3192,
+    3249,3306,3364,3422,3481,3540,3600,3660,3721,3782,3844,3906,3969,4032,4096,4160,4225,4290,4356,
+    4422,4489,4556,4624,4692,4761,4830,4900,4970,5041,5112,5184,5256,5329,5402,5476,5550,5625,5700,
+    5776,5852,5929,6006,6084,6162,6241,6320,6400,6480,6561,6642,6724,6806,6889,6972,7056,7140,7225,
+    7310,7396,7482,7569,7656,7744,7832,7921,8010,8100,8190,8281,8372,8464,8556,8649,8742,8836,8930,
+    9025,9120,9216,9312,9409,9506,9604,9702,9801,9900,10000,10100,10201,10302,10404,10506,10609,
+    10712,10816,10920,11025,11130,11236,11342,11449,11556,11664,11772,11881,11990,12100,12210,12321,
+    12432,12544,12656,12769,12882,12996,13110,13225,13340,13456,13572,13689,13806,13924,14042,14161,
+    14280,14400,14520,14641,14762,14884,15006,15129,15252,15376,15500,15625,15750,15876,16002,16129,
+    16256,16384,16512,16641,16770,16900,17030,17161,17292,17424,17556,17689,17822,17956,18090,18225,
+    18360,18496,18632,18769,18906,19044,19182,19321,19460,19600,19740,19881,20022,20164,20306,20449,
+    20592,20736,20880,21025,21170,21316,21462,21609,21756,21904,22052,22201,22350,22500,22650,22801,
+    22952,23104,23256,23409,23562,23716,23870,24025,24180,24336,24492,24649,24806,24964,25122,25281,
+    25440,25600,25760,25921,26082,26244,26406,26569,26732,26896,27060,27225,27390,27556,27722,27889,
+    28056,28224,28392,28561,28730,28900,29070,29241,29412,29584,29756,29929,30102,30276,30450,30625,
+    30800,30976,31152,31329,31506,31684,31862,32041,32220,32400,32580,32761,32942,33124,33306,33489,
+    33672,33856,34040,34225,34410,34596,34782,34969,35156,35344,35532,35721,35910,36100,36290,36481,
+    36672,36864,37056,37249,37442,37636,37830,38025,38220,38416,38612,38809,39006,39204,39402,39601,
+    39800,40000,40200,40401,40602,40804,41006,41209,41412,41616,41820,42025,42230,42436,42642,42849,
+    43056,43264,43472,43681,43890,44100,44310,44521,44732,44944,45156,45369,45582,45796,46010,46225,
+    46440,46656,46872,47089,47306,47524,47742,47961,48180,48400,48620,48841,49062,49284,49506,49729,
+    49952,50176,50400,50625,50850,51076,51302,51529,51756,51984,52212,52441,52670,52900,53130,53361,
+    53592,53824,54056,54289,54522,54756,54990,55225,55460,55696,55932,56169,56406,56644,56882,57121,
+    57360,57600,57840,58081,58322,58564,58806,59049,59292,59536,59780,60025,60270,60516,60762,61009,
+    61256,61504,61752,62001,62250,62500,62750,63001,63252,63504,63756,64009,64262,64516,64770,65025,
+    0
+};
+#pragma data(data)
+
+// a*b for UNSIGNED 8-bit a,b, via the quarter-square identity above --
+// O(1) (two table lookups + a subtract) instead of a shift-add loop.
+// `static inline` (a hint, not a guarantee) so this collapses directly
+// into fixed_mul()/fixed_sqr()'s own generated code where possible --
+// deliberately PLAIN C, no inline asm anywhere in this file (see
+// fixed_mul()'s comment below for why).
+static inline unsigned qmul8u(unsigned char a, unsigned char b)
+{
+    unsigned sum = (unsigned)a + b;
+    unsigned char diff = (a > b) ? (unsigned char)(a - b) : (unsigned char)(b - a);
+    return (unsigned)(sq_table[sum] - sq_table[diff]);
+}
+
+// a*b for two Q5.11 values, composed from 4 unsigned 8x8 quarter-
+// square multiplies (the classic byte-split long-multiplication
+// decomposition: a*b = al*bl + (al*bh+ah*bl)<<8 + ah*bh<<16), then
+// sign-corrected and rescaled back to Q5.11.
+//
+// A quarter-square-table multiply was tried here TWICE before
+// (2026-09-09, see git history -- the first attempt's include/
+// fastmul.c was never actually committed, so isn't recoverable, see
+// CREDITS.md):
+//
+// Attempt 1: several separate hand-written __asm functions (multiply
+// -> muls16 -> mulu16 -> 4x qmul8 -> 2x qsub8, using raw
+// indirect-indexed table addressing). Independently verified correct
+// in Python and in an isolated single hardware call, but gave silently
+// WRONG results when called repeatedly with caller-side locals that
+// needed to stay live across several calls. Traced (via a delegated
+// research pass -- see CREDITS.md) to a documented, currently-open
+// Oscar64 whole-program `-O2` register-allocator bug class (upstream
+// issues #318/#361 on drmortalwombat/oscar64) -- and this project's OWN
+// Oscar64 reference (oscar64manual.md) independently documents THREE
+// separate instances of this exact bug class found in other projects.
+// Reverted to lmul16s()/lmul16u() (fixmath.h), which avoid it by being
+// ONE flat __native asm function each -- no nested C calls at all.
+//
+// Attempt 2 (this one): same PLAIN-C, no-inline-asm approach as now
+// (table lookups via ordinary array indexing, no hand-written asm
+// anywhere, everything inlined directly into this function's own body
+// rather than through wrapper functions -- avoids BOTH what attempt 1
+// hit AND the general "deep whole-program call chain" version of that
+// bug class, not just the asm-specific one). Algorithm re-verified
+// exhaustively in Python again (same coverage as attempt 1). This
+// attempt's actual blocker turned out to be a completely different,
+// mundane one: the 1024-byte sq_table[] above didn't fit in "main"'s
+// own data budget -- see its own comment for how that got solved
+// (placement, not a size/algorithm change).
 static fixed_t fixed_mul(fixed_t a, fixed_t b)
 {
-    return (fixed_t)(lmul16s(a, b) >> FIXED_SHIFT);
+    unsigned char neg = 0;
+    unsigned char al, ah, bl, bh;
+    unsigned long p0, p1, p2, p3, product;
+
+    if (a < 0) { a = (fixed_t)(-a); neg ^= 1; }
+    if (b < 0) { b = (fixed_t)(-b); neg ^= 1; }
+
+    al = (unsigned char)a;
+    ah = (unsigned char)((unsigned)a >> 8);
+    bl = (unsigned char)b;
+    bh = (unsigned char)((unsigned)b >> 8);
+
+    p0 = qmul8u(al, bl);
+    p1 = qmul8u(al, bh);
+    p2 = qmul8u(ah, bl);
+    p3 = qmul8u(ah, bh);
+    product = p0 + ((p1 + p2) << 8) + (p3 << 16);
+
+    return (fixed_t)(neg ? -(long)(product >> FIXED_SHIFT) : (long)(product >> FIXED_SHIFT));
 }
 
 // x*x, for the (common -- two of three multiplies per iteration are
-// squares) case where the sign-correction half of a full signed
-// multiply is pure waste: negate first if negative, then an unsigned
-// multiply needs no sign handling at all. Same lmul16u()/shift shape
-// as fixmath.h's own lsqr4f12s() (a Q4.12 sibling of this), adapted to
-// Q5.11's shift -- see fixed_mul()'s comment above for why this
-// shallow, single-library-call shape is the safe one.
+// squares) case where sign-correction is pure waste (negate first,
+// same as fixed_mul()) and one of the 4 partial products is
+// redundant: with a=b, al*bh and ah*bl (p1/p2 above) are the exact
+// same value, computed once and doubled here instead of computed
+// twice -- 3 qmul8u() calls instead of 4.
 static fixed_t fixed_sqr(fixed_t a)
 {
+    unsigned char al, ah;
+    unsigned long p0, p1, p3, product;
+
     if (a < 0)
         a = (fixed_t)(-a);
-    return (fixed_t)(lmul16u((unsigned)a, (unsigned)a) >> FIXED_SHIFT);
+
+    al = (unsigned char)a;
+    ah = (unsigned char)((unsigned)a >> 8);
+
+    p0 = qmul8u(al, al);
+    p1 = qmul8u(al, ah);
+    p3 = qmul8u(ah, ah);
+    product = p0 + (p1 << 9) + (p3 << 16);   // (p1+p1)<<8 == p1<<9
+
+    return (fixed_t)(long)(product >> FIXED_SHIFT);
 }
 
 // Per-pixel step in both axes: EXACTLY 16 (= 1/128 in Q5.11), chosen
