@@ -21,7 +21,6 @@ Requires Ultimate 64 / U64 Elite 2, firmware 3.15+.
 #include "upic_viewer.h"
 #include "mandelbrot.h"
 #include "rombank.h"
-#include "progress.h"
 
 // uii_setpalette() confirmed rejected ("81,INVALID P...") right after
 // a fresh device reboot (2026-09-09), on final-release firmware 3.15
@@ -50,18 +49,21 @@ int main(void)
 {
 	unsigned char uci_ready;
 
-	// First thing, before anything else -- plain screen/color-RAM POKEs,
-	// no KERNAL calls, so nothing else needs to happen first (see
-	// progress.h). Gives instant visual feedback instead of a frozen
-	// BASIC-ready screen during rombank_out()/UCI detection/palette
-	// retries, which can themselves take a couple of seconds.
-	progress_init();
-
 	rombank_out();  // must run before turbo_set()/uii_detect() -- both live at $E000
 	// -- and before mandelbrot_generate(), which writes part of the
 	// picture to $E000 too.
 
 	uci_ready = uii_wait_for_uci(5);
+
+	// Palette pushed before generation -- mandelbrot_generate() shows
+	// the picture LIVE as it builds (see its own comment), which needs
+	// the fractal's own palette active from the start to look right.
+	// A plain-text welcome/progress screen was tried in between (see
+	// git history) but removed once live rendering made it redundant
+	// -- the user explicitly preferred watching the picture build over
+	// a progress bar, flicker and all.
+	if (uci_ready)
+		setpalette_retry(mandelbrot_palette);
 
 	// Turbo on BEFORE generating, not just before displaying -- the
 	// whole point of doing this on-device is the 64x speedup on the
@@ -69,17 +71,6 @@ int main(void)
 	turbo_fast();
 
 	mandelbrot_generate();
-
-	// Palette pushed only now, after generation -- SET_PALETTE rewrites
-	// the actual RGB behind indices 0-15, which VIC-II's border/
-	// background/text colors read from too. Pushing it before
-	// generation (as this used to) recolored progress_init()'s welcome/
-	// progress screen with the fractal's custom blue->orange gradient
-	// instead of normal colors for the whole ~12s generation now takes.
-	// uii_resetpalette() (below) already proved UCI calls work fine
-	// with turbo left on, so no need to touch turbo state around this.
-	if (uci_ready)
-		setpalette_retry(mandelbrot_palette);
 
 	while (!upic_show_frame())
 		;

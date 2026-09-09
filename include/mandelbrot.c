@@ -5,7 +5,6 @@ See mandelbrot.h for API documentation and current status.
 
 #include <c64/cia.h>
 #include "mandelbrot.h"
-#include "progress.h"
 
 // Set at the end of mandelbrot_generate() from CIA1's TOD clock
 // (reset to 0 at the start) -- read these back via
@@ -326,15 +325,22 @@ void mandelbrot_generate(void)
     // persistent flicker even after forcing the inter-column border
     // color to black (see git history) -- render_frame() takes a fixed
     // ~20ms (one real PAL frame, NOT sped up by turbo, since it's
-    // synced to the actual raster beam), but computing one column takes
-    // considerably longer than that, so every call was a brief flash of
-    // the picture-so-far followed by a long static hold, regardless of
-    // the hold's color. Back to pure precalculate-then-display: the
-    // real display loop in main() (`while(!upic_show_frame())`) has no
-    // such mismatch, since nothing else runs between its own back-to-
-    // back calls. mandel_gen_mins/secs/tenths (see top of file) gives
-    // an objective generation-time measurement instead of a progress
-    // animation -- read back via ultimate_read_memory after a run.
+    // synced to the actual raster beam), but computing one column took
+    // considerably longer than that (~129ms/column average at the
+    // time), so every call was a brief flash of the picture-so-far
+    // followed by a long static hold, regardless of the hold's color.
+    // RETRIED, same day, after the multiply/row-mirroring speedups
+    // below cut generation to ~8.7s total (~45ms/column average) --
+    // still longer than one frame, but under half of what it was.
+    // CONFIRMED on real hardware: still flickers, but the user
+    // explicitly preferred watching the picture build over a static
+    // wait, flicker included -- kept this way deliberately, not an
+    // oversight. mandel_gen_mins/secs/tenths (see top of file) still
+    // gives an objective measurement -- read back via
+    // ultimate_read_memory after a run. A plain-text progress screen
+    // (progress.c) was added for the earlier precalculate-then-show
+    // design and removed once live rendering made it redundant (see
+    // git history).
     //
     // Columns 0..UPIC_RELOC_COLS-1 -> upic_buffer_reloc[] ($E000),
     // the rest -> upic_buffer[] ($1800-territory) -- see
@@ -408,9 +414,12 @@ void mandelbrot_generate(void)
             dst[UPIC_HEIGHT - 1 - y] = packed;
         }
 
-        // Cheap (two 16-bit divides, no display-technique overhead) --
-        // see progress.h for why this is plain POKEs, not upic_show_frame().
-        progress_update((unsigned char)(bytecol + 1), (unsigned char)(UPIC_WIDTH / 2));
+        // Live picture build-up -- see this function's own comment
+        // above. Return value ignored here on purpose: SPACE exits the
+        // FINAL display loop in main() (after this function returns),
+        // not generation itself -- a SPACE press mid-generation is
+        // just consumed/ignored by this call, same as any other key.
+        upic_show_frame();
     }
 
     mandel_gen_tenths = cia1.todt;
