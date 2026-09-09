@@ -2,10 +2,12 @@
 Mandelbrot Upic -- fractal generator (interface)
 
 PHASE 1 (2026-09-09): fixed-point escape-time iteration + a crude
-fixed (non-histogram) palette -- see docs/MANDELBROT_ALGORITHM.md for
-the full phased plan. Palette optimisation (Phase 2, histogram-based)
-and the cardioid/period-2-bulb early-skip (Phase 3) are not
-implemented yet.
+fixed (non-histogram) palette, PLUS the cardioid/period-2-bulb
+early-skip pulled in from the planned Phase 3 (needed sooner than
+planned -- real hardware timing showed it matters a lot). Confirmed
+rendering a correct, full-detail Mandelbrot set on real hardware --
+see docs/MANDELBROT_ALGORITHM.md for the full phased plan. Palette
+optimisation (Phase 2, histogram-based) is still not implemented.
 
 Credit: the fixed-point algorithm design (Q5.11 range/precision
 choice) is based on the documented approach in 0x444454/mandelbr8
@@ -21,12 +23,15 @@ memory layout. See CREDITS.md.
 
 #include "upic_viewer.h"
 
-// Default view: real in [-2.0, 1.0], imaginary in [-1.0, 1.0] -- the
-// classic full-set framing (the set's leftmost point, the cusp at
-// real=-2, sits exactly on the left edge). Chosen so the per-pixel
-// step is an EXACT Q5.11 integer (16, i.e. 1/128) in both axes, no
-// rounding drift accumulated across 384/256 pixel steps -- see
-// mandelbrot.c's own comment on MANDEL_DX/MANDEL_DY.
+// Default view: real in [-2.0, 1.0], imaginary in about [-0.996,
+// 0.996] (not quite -1.0..1.0 -- see mandelbrot.c's own comment on
+// MANDEL_Y0 for why, an imperceptible crop in exchange for exploiting
+// the set's real-axis mirror symmetry) -- the classic full-set framing
+// (the set's leftmost point, the cusp at real=-2, sits exactly on the
+// left edge). Chosen so the per-pixel step is an EXACT Q5.11 integer
+// (16, i.e. 1/128) in both axes, no rounding drift accumulated across
+// 384/256 pixel steps -- see mandelbrot.c's own comment on
+// MANDEL_DX/MANDEL_DY.
 #define MANDEL_MAX_ITER 32
 
 // mandelbrot_generate -- fill upic_buffer[]/upic_buffer_reloc[] (see
@@ -52,6 +57,13 @@ void mandelbrot_generate(void);
 // (Phase 1) fixed color mapping -- push via uii_setpalette() after
 // calling mandelbrot_generate(). Index 0 = black ("in the set").
 extern const char mandelbrot_palette[48];
+
+// Generation time, captured from CIA1's TOD clock at the end of
+// mandelbrot_generate() -- read back via ultimate_read_memory after a
+// run for an objective timing measurement (no on-screen readout yet).
+extern volatile unsigned char mandel_gen_mins;
+extern volatile unsigned char mandel_gen_secs;
+extern volatile unsigned char mandel_gen_tenths;
 
 #pragma compile("mandelbrot.c")
 

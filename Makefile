@@ -80,7 +80,8 @@ ALLSRCS = $(MAINSRC) \
           include/rombank.c include/rombank.h \
           include/turbo.c include/turbo.h \
           include/ultimate_common_lib.c include/ultimate_common_lib.h \
-          include/mandelbrot.c include/mandelbrot.h
+          include/mandelbrot.c include/mandelbrot.h \
+          include/progress.c include/progress.h
 
 # Output
 TARGET = build/$(MAIN).prg
