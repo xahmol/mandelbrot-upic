@@ -37,6 +37,7 @@ picture, outlining a zoom-target rectangle:
 | Cursor keys (hold Shift for up/left) | Same, alternative for muscle memory |
 | Joystick, port 2 | Same, directional + fire |
 | `RETURN` or joystick fire | Confirm the active corner, then the other |
+| `C` | Cycle the base color gradient (blue/orange, fire, ice, rainbow) |
 | `Q` | Quit to BASIC |
 
 Picking a zoom target is a two-step process: move the first corner
