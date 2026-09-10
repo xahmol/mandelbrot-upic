@@ -23,16 +23,52 @@ memory layout. See CREDITS.md.
 
 #include "upic_viewer.h"
 
-// Default view: real in [-2.0, 1.0], imaginary in about [-0.996,
-// 0.996] (not quite -1.0..1.0 -- see mandelbrot.c's own comment on
-// MANDEL_Y0 for why, an imperceptible crop in exchange for exploiting
-// the set's real-axis mirror symmetry) -- the classic full-set framing
-// (the set's leftmost point, the cusp at real=-2, sits exactly on the
-// left edge). Chosen so the per-pixel step is an EXACT Q5.11 integer
-// (16, i.e. 1/128) in both axes, no rounding drift accumulated across
-// 384/256 pixel steps -- see mandelbrot.c's own comment on
-// MANDEL_DX/MANDEL_DY.
+// ---------------------------------------------------------------
+// Q5.11 fixed point: a 16-bit signed value where bit 15 is sign,
+// bits 14-11 are the integer part, bits 10-0 are the fraction --
+// represents [-16, +16) at a resolution of 1/2048. Maps directly onto
+// a plain 16-bit signed int, no wrapper type needed. See
+// docs/MANDELBROT_ALGORITHM.md for why this range/precision (a
+// documented choice from 0x444454/mandelbr8, reused here -- see
+// CREDITS.md).
+//
+// Moved here from mandelbrot.c (2026-09-10) -- zoom.c needs the same
+// representation/constants to compute a new view from a user-selected
+// screen rectangle. Note the precision ceiling this puts on zooming:
+// mandel_dx/dy (below) can't go below 1 raw unit (1/2048) without
+// rounding to 0 (sampling every column/row at the same coordinate) --
+// starting from the default view's step of 16, that's roughly a 16x
+// total zoom-in budget before running out of precision. Deep zooming
+// beyond that would need a wider fixed-point format (or arbitrary
+// precision), a separate, bigger undertaking not attempted here.
+// ---------------------------------------------------------------
+typedef int fixed_t;
+
+#define FIXED_SHIFT 11
+#define FIXED_ONE   (1 << FIXED_SHIFT)          // 1.0 in Q5.11 = 2048
+#define FIXED4      (4 << FIXED_SHIFT)          // 4.0 in Q5.11 -- escape-radius-squared threshold
+
 #define MANDEL_MAX_ITER 32
+
+// Current view bounds -- MUTABLE (2026-09-10, were #define constants)
+// so zoom.c can retarget mandelbrot_generate() at an arbitrary
+// user-selected sub-rectangle of whatever's currently displayed,
+// instead of only ever the fixed default overview. Initialised (see
+// mandelbrot.c) to the same default overview as before -- real in
+// [-2.0, 1.0], imaginary in about [-0.996, 0.996] (not quite
+// -1.0..1.0 -- see mandelbrot.c's own comment on the initial
+// mandel_y0 value for why: an imperceptible crop in exchange for
+// exploiting the set's real-axis mirror symmetry, though that
+// optimisation is now conditional on the CURRENT view actually being
+// symmetric -- see mandelbrot_generate()'s own comment. Not generally
+// true after a zoom). mandel_dx/dy are equal for the default view
+// (square pixels, no aspect distortion) but kept as two independent
+// variables since a user-selected zoom rectangle's width/height in
+// cells isn't necessarily equal.
+extern fixed_t mandel_x0;
+extern fixed_t mandel_y0;
+extern fixed_t mandel_dx;
+extern fixed_t mandel_dy;
 
 // mandelbrot_generate -- fill upic_buffer[]/upic_buffer_reloc[] (see
 // upic_viewer.h) with a rendered Mandelbrot set at the default view,

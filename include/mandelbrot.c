@@ -17,21 +17,6 @@ volatile unsigned char mandel_gen_secs = 0;
 volatile unsigned char mandel_gen_tenths = 0;
 
 // ---------------------------------------------------------------
-// Q5.11 fixed point: a 16-bit signed value where bit 15 is sign,
-// bits 14-11 are the integer part, bits 10-0 are the fraction --
-// represents [-16, +16) at a resolution of 1/2048. Maps directly onto
-// a plain 16-bit signed int, no wrapper type needed. See
-// docs/MANDELBROT_ALGORITHM.md for why this range/precision (a
-// documented choice from 0x444454/mandelbr8, reused here -- see
-// CREDITS.md).
-// ---------------------------------------------------------------
-typedef int fixed_t;
-
-#define FIXED_SHIFT 11
-#define FIXED_ONE   (1 << FIXED_SHIFT)          // 1.0 in Q5.11 = 2048
-#define FIXED4      (4 << FIXED_SHIFT)          // 4.0 in Q5.11 -- escape-radius-squared threshold
-
-// ---------------------------------------------------------------
 // Quarter-square multiply table: sq_table[n] = floor(n*n/4) for
 // n=0..510 (entry 511 unused padding, to a clean 512 entries).
 // Backs the classic identity a*b = floor((a+b)^2/4) - floor((a-b)^2/4)
@@ -188,11 +173,12 @@ static fixed_t fixed_sqr(fixed_t a)
     return (fixed_t)(long)(product >> FIXED_SHIFT);
 }
 
-// Per-pixel step in both axes: EXACTLY 16 (= 1/128 in Q5.11), chosen
-// so the default view's bounds divide evenly by 384/256 pixels with
-// zero accumulated rounding error -- see mandelbrot.h's own comment on
-// the view. Real axis: -4096 (-2.0) + x*16, x in 0..383, reaching
-// +2048 (1.0) - 16 at the right edge.
+// Default per-pixel step in both axes: EXACTLY 16 (= 1/128 in Q5.11),
+// chosen so the default view's bounds divide evenly by 384/256 pixels
+// with zero accumulated rounding error -- see mandelbrot.h's own
+// comment on the view (now mutable variables, not #define constants --
+// 2026-09-10, see there for why). Real axis: -4096 (-2.0) + x*16, x in
+// 0..383, reaching +2048 (1.0) - 16 at the right edge.
 //
 // Imaginary axis: -2040 (not -2048/-1.0 -- see below) + y*16, y in
 // 0..255. Shifted by half a step (8 = 1/256 in Q5.11) off the "true"
@@ -201,17 +187,30 @@ static fixed_t fixed_sqr(fixed_t a)
 // Q5.11, bit for bit (cy(255-y) = -2040+16*(255-y) = 2040-16y =
 // -(-2040+16y) = -cy(y)). The Mandelbrot set is symmetric under
 // complex conjugation (mandel_iterate(cx,cy) == mandel_iterate(cx,-cy)
-// always), so mandelbrot_generate() below only ever iterates the top
-// half (y=0..127) and mirrors each row's result into its exact
-// opposite -- roughly halves the dominant cost (iteration count) for
-// free. Costs an imperceptible ~0.4% crop off both the top and bottom
-// edges (true range becomes about -0.996..+0.996 instead of
-// -1.0..+0.996) -- found during the same research pass as the
-// lmul16s() swap above (see CREDITS.md), not previously noticed.
-#define MANDEL_X0 (-4096)
-#define MANDEL_Y0 (-2040)
-#define MANDEL_DX 16
-#define MANDEL_DY 16
+// always), so mandelbrot_generate() below iterates only the top half
+// (y=0..127) and mirrors each row's result into its exact opposite
+// -- roughly halves the dominant cost (iteration count) for free.
+// Costs an imperceptible ~0.4% crop off both the top and bottom edges
+// (true range becomes about -0.996..+0.996 instead of -1.0..+0.996)
+// -- found during the same research pass as the lmul16s() swap above
+// (see CREDITS.md), not previously noticed.
+//
+// THIS SYMMETRY IS SPECIFIC TO THE DEFAULT VIEW (2026-09-10): it's a
+// property of THESE PARTICULAR bounds, not of the Mandelbrot set in
+// general -- an arbitrary user-selected zoom target (see zoom.c)
+// generally will NOT straddle cy=0 the way this one deliberately does
+// (most interesting zoom targets don't happen to sit on the real
+// axis). mandelbrot_generate() below detects this at runtime (checking
+// whether the CURRENT mandel_y0/mandel_dy actually produce a symmetric
+// view) and only takes the mirror-and-halve shortcut when it's valid
+// -- a typical zoom falls back to computing all 256 rows directly,
+// roughly doubling generation time relative to a symmetric view (still
+// benefiting from the multiply/hoisting speedups elsewhere in this
+// file).
+fixed_t mandel_x0 = -4096;
+fixed_t mandel_y0 = -2040;
+fixed_t mandel_dx = 16;
+fixed_t mandel_dy = 16;
 
 // ---------------------------------------------------------------
 // Cardioid / period-2-bulb early-skip (2026-09-09, moved up from
@@ -311,14 +310,21 @@ static unsigned char mandel_color(unsigned char iter)
     return (unsigned char)(1 + ((unsigned)iter * 15) / MANDEL_MAX_ITER);
 }
 
-// One entry per row (y=0..127, see MANDEL_Y0's comment on why only the
-// top half is ever needed) -- see mandelbrot_generate()'s own comment
-// on why this is precomputed once instead of once per column.
-static fixed_t cy2_table[UPIC_HEIGHT / 2];
+// One entry per row -- sized for the worst case (a full, non-mirrored
+//256-row generation, see mandelbrot_generate()'s own comment on the
+// symmetry check) rather than the 128 a symmetric view actually needs.
+// 256 * 2 bytes = 512 bytes -- doesn't fit "main"'s own data/bss
+// budget (same wall sq_table hit -- see its own comment above), placed
+// in modbss alongside it instead (2026-09-10).
+#pragma bss(modbss)
+static fixed_t cy2_table[UPIC_HEIGHT];
+#pragma bss(bss)
 
 void mandelbrot_generate(void)
 {
     unsigned bytecol, y;
+    unsigned char symmetric;
+    unsigned half_height;
 
     // Live build-up via upic_show_frame() once per column, tried
     // 2026-09-09, REVERTED same day: confirmed on real hardware as
@@ -351,7 +357,7 @@ void mandelbrot_generate(void)
     // Fixed on real hardware (2026-09-09, confirmed correct): the
     // original version of this loop -- indexing both buffers with a
     // fresh `bytecol * UPIC_HEIGHT + y` multiply-add every row, and
-    // accumulating `cy` via `cy += MANDEL_DY` in the for-loop's own
+    // accumulating `cy` via `cy += mandel_dy` in the for-loop's own
     // increment clause -- produced a picture that repeated the same
     // ~16-row band down the whole 256-row height instead of a smooth
     // gradient. Root cause not fully isolated (Oscar64 codegen issue,
@@ -359,28 +365,38 @@ void mandelbrot_generate(void)
     // independently verified correct in Python first). This version --
     // column base pointer computed ONCE (a single multiply per column,
     // not per pixel), `cy` recomputed directly from `y` each row
-    // (`MANDEL_Y0 + y*MANDEL_DY`, not an accumulator) -- renders a
+    // (`mandel_y0 + y*mandel_dy`, not an accumulator) -- renders a
     // correct, full-detail Mandelbrot set on real hardware.
     cia1.todt = 0;
     cia1.tods = 0;
     cia1.todm = 0;
 
+    // A view is mirror-eligible only if row 0 and row (HEIGHT-1) are
+    // exact negatives of each other in Q5.11 -- true BY CONSTRUCTION
+    // for the default view's mandel_y0 (see its own comment), but a
+    // user-selected zoom target (zoom.c) generally will NOT satisfy
+    // this (2026-09-10) -- most interesting zoom targets don't happen
+    // to straddle the real axis. Checked at runtime rather than
+    // assumed, so both cases stay correct through repeated zooms.
+    symmetric = (mandel_y0 == (fixed_t)(-(((long)(UPIC_HEIGHT - 1) * mandel_dy) / 2)));
+    half_height = symmetric ? (UPIC_HEIGHT / 2) : UPIC_HEIGHT;
+
     // cy^2 depends only on the row, not the column -- precompute it
     // once here instead of leaving mandel_in_cardioid_or_bulb() (via
     // mandel_iterate()) to recompute it from scratch for every one of
     // the 192 columns that share the same row (see that function's own
-    // comment). 128 entries * 2 bytes = 256 bytes, comfortably inside
-    // budget.
-    for (y = 0; y < UPIC_HEIGHT / 2; y++)
+    // comment). Still worth doing regardless of symmetry -- only the
+    // ROW COUNT (half_height) differs.
+    for (y = 0; y < half_height; y++)
     {
-        fixed_t cy = (fixed_t)(MANDEL_Y0 + (long)y * MANDEL_DY);
+        fixed_t cy = (fixed_t)(mandel_y0 + (long)y * mandel_dy);
         cy2_table[y] = fixed_sqr(cy);
     }
 
     for (bytecol = 0; bytecol < UPIC_WIDTH / 2; bytecol++)
     {
-        fixed_t cx0 = (fixed_t)(MANDEL_X0 + (long)(bytecol * 2) * MANDEL_DX);
-        fixed_t cx1 = (fixed_t)(cx0 + MANDEL_DX);
+        fixed_t cx0 = (fixed_t)(mandel_x0 + (long)(bytecol * 2) * mandel_dx);
+        fixed_t cx1 = (fixed_t)(cx0 + mandel_dx);
         volatile char *dst = (bytecol < UPIC_RELOC_COLS)
             ? &upic_buffer_reloc[(unsigned)bytecol * UPIC_HEIGHT]
             : &upic_buffer[(unsigned)(bytecol - UPIC_RELOC_COLS) * UPIC_HEIGHT];
@@ -397,21 +413,22 @@ void mandelbrot_generate(void)
         fixed_t xm1_2  = fixed_sqr(xm1);
         fixed_t xp11_2 = fixed_sqr((fixed_t)(cx1 + FIXED_ONE));
 
-        // Only the top half (y=0..127) is actually iterated -- each
-        // row's result is mirrored straight into its exact opposite
-        // (255-y), which MANDEL_Y0's shift (see its own comment above)
-        // guarantees has the exact negated cy, and the Mandelbrot set
-        // is symmetric under complex conjugation. Roughly halves this
-        // loop's iteration count.
-        for (y = 0; y < UPIC_HEIGHT / 2; y++)
+        // Only half_height rows are actually iterated -- when the
+        // view is symmetric (see above), each row's result is also
+        // mirrored straight into its exact opposite (HEIGHT-1-y),
+        // roughly halving this loop's cost; otherwise half_height is
+        // the full UPIC_HEIGHT and the mirror write below is skipped
+        // (every row genuinely is unique data).
+        for (y = 0; y < half_height; y++)
         {
-            fixed_t cy = (fixed_t)(MANDEL_Y0 + (long)y * MANDEL_DY);
+            fixed_t cy = (fixed_t)(mandel_y0 + (long)y * mandel_dy);
             fixed_t cy2 = cy2_table[y];
             unsigned char even = mandel_color(mandel_iterate(cx0, cy, xm0, xm0_2, xp10_2, cy2));
             unsigned char odd  = mandel_color(mandel_iterate(cx1, cy, xm1, xm1_2, xp11_2, cy2));
             unsigned char packed = (unsigned char)((odd << 4) | even);
             dst[y] = packed;
-            dst[UPIC_HEIGHT - 1 - y] = packed;
+            if (symmetric)
+                dst[UPIC_HEIGHT - 1 - y] = packed;
         }
 
         // Live picture build-up -- see this function's own comment

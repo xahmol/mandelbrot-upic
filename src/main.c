@@ -21,6 +21,7 @@ Requires Ultimate 64 / U64 Elite 2, firmware 3.15+.
 #include "upic_viewer.h"
 #include "mandelbrot.h"
 #include "rombank.h"
+#include "zoom.h"
 
 // uii_setpalette() confirmed rejected ("81,INVALID P...") right after
 // a fresh device reboot (2026-09-09), on final-release firmware 3.15
@@ -70,10 +71,16 @@ int main(void)
 	// escape-time iteration itself, which is by far the slow part.
 	turbo_fast();
 
-	mandelbrot_generate();
-
-	while (!upic_show_frame())
-		;
+	// Generate -> let the user pick a zoom target on the completed
+	// picture (zoom.c, 2026-09-10) -> generate again at the new
+	// bounds -> repeat, until they quit instead of confirming a zoom.
+	// zoom_select() replaces the old plain `while(!upic_show_frame());`
+	// loop -- it still shows the picture the same way, just with
+	// corner-sprite selection UI layered on top; see zoom.h.
+	do
+	{
+		mandelbrot_generate();
+	} while (zoom_select());
 
 	upic_restore_display();
 	uii_resetpalette();
