@@ -320,6 +320,138 @@ static unsigned char mandel_color(unsigned char iter)
 static fixed_t cy2_table[UPIC_HEIGHT];
 #pragma bss(bss)
 
+// ---------------------------------------------------------------
+// Per-generation histogram-equalised palette mapping (2026-09-10).
+// mandel_color() above gives every escaping pixel one of 15 fixed,
+// linearly-spaced shades based on raw iteration count, regardless of
+// how those counts are actually distributed in the current view --
+// fine for the default full overview, but a typical zoom target has
+// escape counts clustered in a narrow band, so most pixels end up
+// sharing 2-3 colors while the rest of the gradient goes unused.
+//
+// Full histogram-coloring (bucket by RAW iteration count, 0..31) would
+// need per-pixel iteration counts kept around for a second pass --
+// either a full-resolution buffer (~98KB, nowhere close to available)
+// or recomputing the whole fractal twice (doubling generation time,
+// undoing this session's own speed work). Neither is acceptable here.
+//
+// What's implemented instead: since Upic can only ever display 15
+// escaping shades anyway (mandel_color()'s own output range), there's
+// no benefit to equalising over the full 32-level raw range in the
+// first place -- histogram equalisation is done directly on the
+// ALREADY-QUANTISED 15-bucket distribution. mandel_bucket_hist[] is
+// tallied for free during the existing single pass (one array
+// increment per pixel, using the color index already being computed);
+// after generation, mandel_compute_remap() turns that into a 16-entry
+// remap table via the standard cumulative-distribution-function
+// normalisation, and mandel_apply_remap() does a cheap second pass
+// over the ALREADY-COMPUTED packed buffer (a nibble lookup, not a
+// fractal recomputation -- ~15ms at 64x turbo, noise against the
+// 9-13s generation itself). Bucket 0 ("in the set") is left alone --
+// it's a different semantic category from the escaping gradient, not
+// part of what gets redistributed. Recomputed fresh every call, so
+// every zoom level gets its own distribution-appropriate mapping.
+//
+// `long`, not `unsigned long`, for the histogram and the intermediate
+// sums below, even though a pixel count can never be negative --
+// matches this file's own established preference for signed
+// arithmetic (cy2_table is `fixed_t`, a signed type, for the same
+// reason): Oscar64 already links a SIGNED 32-bit multiply (used
+// throughout this file's own fixed-point math), and reusing it avoids
+// pulling in a separate unsigned one just for this. All comfortably
+// within signed 32-bit range regardless (max possible pixel count is
+// UPIC_WIDTH*UPIC_HEIGHT = 98304).
+#pragma bss(modbss)
+static long mandel_bucket_hist[16];
+#pragma bss(bss)
+
+// "main" has no room left for new code (confirmed the same way as
+// zoom.c's own equivalent notes: a real build error) -- placed in
+// upiccode like everything else that doesn't fit, alongside sq_table/
+// cy2_table's own data.
+#pragma code(upiccode)
+
+// Plain shift-subtract unsigned division -- NOT the C library's
+// generic divmod32, which this project's math was deliberately built
+// to avoid needing at all (see zoom.c's own zoom_udiv32(), the same
+// technique, duplicated here rather than shared: a shared helper would
+// need this file to #include zoom.h, an awkward backwards dependency
+// for the lower-level fractal module to take on the higher-level
+// zoom-UI one just for a 15-line function). Divisor here is
+// `unsigned long`, not zoom_udiv32()'s plain `unsigned` -- the
+// equalisation math below can divide by a pixel count up to 98304,
+// which doesn't fit a 16-bit unsigned.
+static unsigned long mandel_udiv32(unsigned long dividend, unsigned long divisor)
+{
+    unsigned long quotient = 0;
+    unsigned long remainder = 0;
+    signed char bit;
+
+    for (bit = 31; bit >= 0; bit--)
+    {
+        remainder = (remainder << 1) | ((dividend >> bit) & 1);
+        if (remainder >= divisor)
+        {
+            remainder -= divisor;
+            quotient |= (1UL << bit);
+        }
+    }
+    return quotient;
+}
+
+// Turns this generation's mandel_bucket_hist[] into a 16-entry remap
+// table (remap[old color index] -> new color index) via standard
+// cumulative-distribution-function normalisation. remap[0] is always
+// 0 (black, "in the set" -- never redistributed). If nothing escaped
+// at all in this view (e.g. zoomed entirely into the set's interior),
+// falls back to the identity mapping rather than dividing by zero.
+static void mandel_compute_remap(unsigned char *remap)
+{
+    long total_escaped = 0;
+    long cumulative = 0;
+    unsigned char b;
+
+    remap[0] = 0;
+
+    for (b = 1; b < 16; b++)
+        total_escaped += mandel_bucket_hist[b];
+
+    if (total_escaped == 0)
+    {
+        for (b = 1; b < 16; b++)
+            remap[b] = b;
+        return;
+    }
+
+    for (b = 1; b < 16; b++)
+    {
+        cumulative += mandel_bucket_hist[b];
+        remap[b] = (unsigned char)(1 + mandel_udiv32(
+            (unsigned long)(cumulative * 14L), (unsigned long)total_escaped));
+    }
+}
+
+// Second pass over the ALREADY-COMPUTED packed picture buffers,
+// remapping each nibble through remap[] -- see this section's own
+// opening comment for why this is cheap (no fractal recomputation).
+static void mandel_apply_remap(const unsigned char *remap)
+{
+    unsigned i;
+
+    for (i = 0; i < UPIC_RELOC_BYTES; i++)
+    {
+        unsigned char b = (unsigned char)upic_buffer_reloc[i];
+        upic_buffer_reloc[i] = (char)((remap[b >> 4] << 4) | remap[b & 0x0f]);
+    }
+    for (i = 0; i < UPIC_MAIN_BYTES; i++)
+    {
+        unsigned char b = (unsigned char)upic_buffer[i];
+        upic_buffer[i] = (char)((remap[b >> 4] << 4) | remap[b & 0x0f]);
+    }
+}
+
+#pragma code(code)
+
 void mandelbrot_generate(void)
 {
     unsigned bytecol, y;
@@ -370,6 +502,14 @@ void mandelbrot_generate(void)
     cia1.todt = 0;
     cia1.tods = 0;
     cia1.todm = 0;
+
+    // Reset this generation's color-distribution tally -- see
+    // mandel_bucket_hist's own comment above.
+    {
+        unsigned char b;
+        for (b = 0; b < 16; b++)
+            mandel_bucket_hist[b] = 0;
+    }
 
     // A view is mirror-eligible only if row 0 and row (HEIGHT-1) are
     // exact negatives of each other in Q5.11 -- true BY CONSTRUCTION
@@ -427,8 +567,19 @@ void mandelbrot_generate(void)
             unsigned char odd  = mandel_color(mandel_iterate(cx1, cy, xm1, xm1_2, xp11_2, cy2));
             unsigned char packed = (unsigned char)((odd << 4) | even);
             dst[y] = packed;
+            mandel_bucket_hist[even]++;
+            mandel_bucket_hist[odd]++;
             if (symmetric)
+            {
                 dst[UPIC_HEIGHT - 1 - y] = packed;
+                // Counted again -- the mirrored pixel is a second,
+                // equally real pixel in the final displayed picture,
+                // not a duplicate to skip (see mandel_bucket_hist's
+                // own comment: this tally drives the remap, which
+                // should reflect what's actually on screen).
+                mandel_bucket_hist[even]++;
+                mandel_bucket_hist[odd]++;
+            }
         }
 
         // Live picture build-up -- see this function's own comment
@@ -439,15 +590,29 @@ void mandelbrot_generate(void)
         upic_show_frame();
     }
 
+    // Histogram-equalise this generation's colors -- see
+    // mandel_bucket_hist's own comment above. Counted in the reported
+    // generation time below (it's part of what the user is actually
+    // waiting for) -- cheap enough (~15ms) that it barely moves the
+    // number.
+    {
+        unsigned char remap[16];
+        mandel_compute_remap(remap);
+        mandel_apply_remap(remap);
+    }
+
     mandel_gen_tenths = cia1.todt;
     mandel_gen_secs   = cia1.tods;
     mandel_gen_mins   = cia1.todm;
 }
 
 // Blue -> pale -> orange/red gradient, hand-picked (cosmetic choice,
-// not algorithmic -- see docs/MANDELBROT_ALGORITHM.md, this is a
-// placeholder for the Phase 2 histogram-optimised palette). Index 0 =
-// black, matches mandel_color()'s "in the set" case.
+// not algorithmic -- see docs/MANDELBROT_ALGORITHM.md). These 16 RGB
+// values themselves are still fixed; what's now histogram-equalised
+// (2026-09-10, see mandel_bucket_hist's own comment) is WHICH pixels
+// get which of these 15 escaping shades, redistributed per generation
+// to match the actual color distribution instead of a naive linear
+// split. Index 0 = black, matches mandel_color()'s "in the set" case.
 const char mandelbrot_palette[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
     0x00,0x07,0x3c,    //  1
