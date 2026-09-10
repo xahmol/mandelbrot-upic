@@ -91,8 +91,22 @@ void mandelbrot_generate(void);
 
 // 16-entry RGB palette matching mandelbrot_generate()'s current
 // (Phase 1) fixed color mapping -- push via uii_setpalette() after
-// calling mandelbrot_generate(). Index 0 = black ("in the set").
+// calling mandelbrot_generate(). Index 0 = black ("in the set"). Also
+// mandel_palettes[0] below -- kept as its own named symbol too since
+// main.c already references it directly.
 extern const char mandelbrot_palette[48];
+
+// Selectable base color gradients (2026-09-10) -- all four are 48-byte
+// RGB48 blocks in the exact format uii_setpalette() expects, index 0
+// always black ("in the set", never part of the escaping gradient,
+// same convention regardless of gradient). zoom.c cycles through these
+// on a keypress; which one's active is independent of and unaffected
+// by mandel_bucket_hist's own per-generation histogram equalisation
+// (see mandelbrot.c) -- that decides which of the 15 escaping indices
+// each pixel gets, this decides what RGB color each index displays as,
+// completely orthogonal to each other.
+#define MANDEL_PALETTE_COUNT 4
+extern const char *const mandel_palettes[MANDEL_PALETTE_COUNT];
 
 // Generation time, captured from CIA1's TOD clock at the end of
 // mandelbrot_generate() -- read back via ultimate_read_memory after a

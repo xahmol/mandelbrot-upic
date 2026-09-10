@@ -6,6 +6,7 @@ See zoom.h for API documentation and current (untested) status.
 #include <c64/keyboard.h>
 #include "upic_viewer.h"
 #include "mandelbrot.h"
+#include "ultimate_common_lib.h"
 #include "zoom.h"
 
 // Direct VIC-II register pokes for sprite setup, NOT Oscar64's own
@@ -280,6 +281,15 @@ unsigned char zoom_select(void)
     int row1 = (3 * UPIC_HEIGHT) / 4;
     unsigned char phase = 0;          // 0 = moving corner A, 1 = moving corner B
     unsigned char return_was_down = 0; // edge-detect confirm (RETURN/fire) -- see below
+    unsigned char c_was_down = 0;      // edge-detect palette cycling ('C') -- see below
+
+    // `static` so the selected palette persists across zoom levels --
+    // zoom_select() is called once per generation, and the palette
+    // itself already stays active on the device regardless (only ever
+    // pushed again here, on request) -- this just remembers WHICH one
+    // is current so 'C' continues cycling forward from there instead
+    // of resetting to the default each time.
+    static unsigned char palette_index = 0;
 
     zoom_sprites_setup();
 
@@ -303,6 +313,29 @@ unsigned char zoom_select(void)
         {
             zoom_sprites_hide();
             return 0;
+        }
+
+        // Cycle the base color gradient (mandelbrot.h's
+        // mandel_palettes[]) -- edge-detected like confirm below, not
+        // level-triggered like movement, so a held 'C' advances once
+        // per press instead of racing through all options in one go.
+        // Plain uii_setpalette(), not main.c's setpalette_retry()
+        // wrapper -- that retry loop exists for the specific "right
+        // after a cold device boot" race (see its own comment); by
+        // the time this screen is showing a completed picture, UCI has
+        // already accepted at least one palette push successfully.
+        if (key_pressed(KSCAN_C))
+        {
+            if (!c_was_down)
+            {
+                palette_index = (unsigned char)((palette_index + 1) % MANDEL_PALETTE_COUNT);
+                uii_setpalette(mandel_palettes[palette_index]);
+            }
+            c_was_down = 1;
+        }
+        else
+        {
+            c_was_down = 0;
         }
 
         if (phase == 0)
