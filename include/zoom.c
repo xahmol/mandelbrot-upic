@@ -218,17 +218,50 @@ static void zoom_sprites_update(int col0, int row0, int col1, int row1)
     VIC_SPR3_Y = (unsigned char)(ZOOM_SPRITE_Y0 + bottom);
 }
 
-// Moves (col,row) by ZOOM_MOVE_STEP per held W/A/S/D key, clamped to
-// the picture's own cell bounds. Plain unshifted W/A/S/D instead of
-// the cursor keys -- avoids needing shift-qualifier handling for
-// up/left (the C64 keyboard matrix only has physical DOWN/RIGHT cursor
-// positions; UP/LEFT are shift+those) for no real benefit here.
+// Moves (col,row) by ZOOM_MOVE_STEP per held direction input, clamped
+// to the picture's own cell bounds. Three equivalent input sources,
+// all checked every call:
+//
+// - W/A/S/D -- the primary scheme, no shift-qualifier complications.
+// - Cursor keys, shift-qualified -- convenience for muscle memory
+//   (2026-09-10, requested). The C64 keyboard matrix only has physical
+//   DOWN/RIGHT cursor positions; UP/LEFT are the SAME two matrix
+//   positions read with shift held (true in hardware, not just a
+//   software convention), so unshifted cursor-right/down move
+//   right/down and shift+cursor-right/down move left/up.
+//   KSCAN_SHIFT_LOCK is, perhaps surprisingly, the correct scan code
+//   to check for a physically held LEFT shift too, not just the
+//   shift-lock switch -- they share the exact same matrix position in
+//   real C64 keyboard hardware (shift-lock is a latching switch that
+//   shorts that same line). KSCAN_RSHIFT covers right shift.
+// - Joystick port 2 ($DC00, CIA1 port A) -- port 1 ($DC01, port B) is
+//   deliberately NOT used: it's shared electrically with the keyboard
+//   matrix's own column reads, a well-documented C64 quirk that makes
+//   joystick-1 readings unreliable while keys are also being scanned
+//   (which this screen does, every frame). Read directly (this
+//   project's own established style throughout, see the VIC register
+//   macros above) rather than via <c64/joystick.h> -- avoids repeating
+//   the same "library placement doesn't fit main, and redirecting it
+//   via the #include point doesn't work" problem already hit with the
+//   sprite library (see zoom_corner_shape's own comment history/the
+//   commit that added this file). All 5 joystick lines are ACTIVE LOW.
+#define CIA1_JOY2 (*(volatile unsigned char *)0xDC00)
+
 static void zoom_move(int *col, int *row)
 {
-    if (key_pressed(KSCAN_A)) *col -= ZOOM_MOVE_STEP;
-    if (key_pressed(KSCAN_D)) *col += ZOOM_MOVE_STEP;
-    if (key_pressed(KSCAN_W)) *row -= ZOOM_MOVE_STEP;
-    if (key_pressed(KSCAN_S)) *row += ZOOM_MOVE_STEP;
+    unsigned char shift = key_pressed(KSCAN_SHIFT_LOCK) || key_pressed(KSCAN_RSHIFT);
+    unsigned char csr_right = key_pressed(KSCAN_CSR_RIGHT);
+    unsigned char csr_down  = key_pressed(KSCAN_CSR_DOWN);
+    unsigned char joy = CIA1_JOY2;
+
+    if (key_pressed(KSCAN_A) || (csr_right && shift)  || !(joy & 0x04))
+        *col -= ZOOM_MOVE_STEP;
+    if (key_pressed(KSCAN_D) || (csr_right && !shift) || !(joy & 0x08))
+        *col += ZOOM_MOVE_STEP;
+    if (key_pressed(KSCAN_W) || (csr_down && shift)   || !(joy & 0x01))
+        *row -= ZOOM_MOVE_STEP;
+    if (key_pressed(KSCAN_S) || (csr_down && !shift)  || !(joy & 0x02))
+        *row += ZOOM_MOVE_STEP;
 
     if (*col < 0) *col = 0;
     if (*col > UPIC_WIDTH - 1) *col = UPIC_WIDTH - 1;
@@ -246,7 +279,7 @@ unsigned char zoom_select(void)
     int col1 = (3 * UPIC_WIDTH) / 4;
     int row1 = (3 * UPIC_HEIGHT) / 4;
     unsigned char phase = 0;          // 0 = moving corner A, 1 = moving corner B
-    unsigned char return_was_down = 0; // edge-detect RETURN -- see below
+    unsigned char return_was_down = 0; // edge-detect confirm (RETURN/fire) -- see below
 
     zoom_sprites_setup();
 
@@ -277,14 +310,15 @@ unsigned char zoom_select(void)
         else
             zoom_move(&col1, &row1);
 
-        // RETURN is edge-detected (only acts on the down-transition),
-        // not level-triggered like movement -- unlike holding a
-        // direction key (where continuous repeat is the whole point),
-        // a held RETURN must advance phase 0->1 and then confirm
+        // Confirm: RETURN or joystick fire (either works, same action)
+        // -- edge-detected (only acts on the down-transition), not
+        // level-triggered like movement -- unlike holding a direction
+        // key (where continuous repeat is the whole point), a held
+        // confirm input must advance phase 0->1 and then confirm
         // phase 1 exactly ONCE each, not race through both within the
-        // same physical key-press (this is polled once per ~20ms
-        // frame, so a normal press stays "down" for several polls).
-        if (key_pressed(KSCAN_RETURN))
+        // same physical press (this is polled once per ~20ms frame,
+        // so a normal press stays "down" for several polls).
+        if (key_pressed(KSCAN_RETURN) || !(CIA1_JOY2 & 0x10))
         {
             if (!return_was_down)
             {
