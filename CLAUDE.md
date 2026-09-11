@@ -7,28 +7,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Mandelbrot Upic** — a Commodore 64 Ultimate demo that generates a
 Mandelbrot fractal on-device at 64 MHz turbo, packs it directly into
 Upic format (a 16-color, 384x256 border-color raster picture
-technique), and displays it live. Targets **Ultimate firmware 3.15 or
-newer only** (no fallback path for older firmware).
+technique), displays it live as it renders, and lets the user
+interactively pan and zoom into any region of the result. Targets
+**Ultimate firmware 3.15 or newer only** (no fallback path for older
+firmware).
 
-Spun off (2026-09-09) from
-[landoficeandfire](https://github.com/xahmol/landoficeandfire), which
-built and hardware-validated the Upic viewer this project reuses
-as-is (`include/upic_viewer.c`/`.h`, `include/rombank.c`/`.h` trimmed
-down -- see that file's own header comment for what was dropped and
-why). See `CREDITS.md` for full attribution, `docs/ARCHITECTURE.md`
-for the project layout, and `docs/MANDELBROT_ALGORITHM.md` for the
-fractal generator's design plan.
-
-**Status (2026-09-09)**: buildchain scaffolded and building/running a
-placeholder (`include/mandelbrot.c` fills a synthetic test pattern
-instead of a real fractal, same one landoficeandfire used to first
-validate its own viewer) -- the real generator isn't implemented yet.
-Read `docs/MANDELBROT_ALGORITHM.md` in full before touching
-`include/mandelbrot.c` -- it covers the fixed-point (Q5.11) design, why
-a squaring-table lookup table (mandelbr8's own biggest optimization)
-was evaluated and rejected for THIS project's memory layout, the
-two-pass histogram palette design, and the suggested implementation
-phases.
+**Status**: v1.0.0, feature-complete. See `README.md` for controls and
+installation, `docs/ARCHITECTURE.md` for the project layout,
+`docs/MANDELBROT_ALGORITHM.md` for the fractal generator's design,
+`docs/UPIC_VIEWER.md` for the display technique, and
+`docs/ZOOM_FEATURE.md` for the interactive pan/zoom control scheme.
+See `CREDITS.md` for full attribution.
 
 ## Toolchain (summary — see `docs/ARCHITECTURE.md` and the global
 `~/.claude/CLAUDE.md`'s Oscar64 section for detail)
@@ -47,29 +36,52 @@ behavior.
 
 - **UCI cartridge-side auto-enable**: `uii_wait_for_uci()` in
   `include/ultimate_common_lib.c` — no need for the user to turn on
-  "Command Interface" in the Ultimate menu first.
+  "Command Interface" in the Ultimate menu first (though
+  `config/MandelbrotUpic-U64E2.cfg` enables it anyway, alongside U64
+  turbo registers).
 - **Palette control**: `uii_getpalette()`/`uii_setpalette()`/
   `uii_setpalettecolor()`/`uii_resetpalette()`, wrapping UCI control
   commands `$51`-`$54` (`GET_PALETTE`/`SET_PALETTE`/
   `SET_PALETTE_COLOR`/`RESET_PALETTE`) — this is how the generated
-  fractal's optimised palette gets pushed to real hardware colors.
+  fractal's palette gets pushed to real hardware colors.
 
 Full protocol reference: `UCILIBMANUAL.md`. Since this demo requires
 firmware 3.15+ unconditionally, there's no need to guard these calls
 behind a version/capability check.
 
+## Memory layout
+
+The shared `upiccode`/`moddata`/`modbss` code/data/bss pool
+(`$E800`-`$FFFF`) is this project's tightest memory budget -- see
+`docs/ZOOM_FEATURE.md`'s memory-layout section before adding anything
+there. Oscar64's linker can, in rare cases, silently wrap an object's
+address past `$10000` back down near `$0000` instead of raising a
+placement error. Always verify actual object placement via the
+build's own `.map` file after changing anything in this pool -- a
+clean build alone is not sufficient evidence of correct placement this
+close to the boundary.
+
+Interrupts are masked globally for the program's entire lifetime (see
+`main.c`'s own comment) -- this program has no functional need for a
+real interrupt, and this avoids a real class of bug where a same-tick
+hardware interrupt chains into genuine KERNAL/JiffyDOS ROM code while
+this program's own direct-CIA keyboard polling is active.
+
 ## Testing
 
-No emulator automation exists for this platform (same as
-landoficeandfire — see its `CLAUDE.md`'s Testing section for why VICE
-specifically doesn't work for UCI/cycle-exact code). Manual/visual
-testing on real Ultimate 64 hardware is the way to confirm any
-graphics-affecting change.
+No emulator automation exists for this platform -- VICE specifically
+doesn't emulate the Ultimate's own UCI/turbo hardware this project
+depends on. Manual/visual testing on real Ultimate 64 hardware is the
+way to confirm any graphics- or control-affecting change.
 
 ## Code conventions
 
-Default terse-comment style applies here (see the top-level global
-instructions).
+This project uses generously detailed comments throughout, not the
+terse default style -- explaining WHY a design choice was made (a
+hardware constraint, a memory-budget fight, a non-obvious interaction)
+is valued here, since this codebase pushes close to several real
+hardware and toolchain limits where that reasoning matters for future
+changes.
 
 ## License
 

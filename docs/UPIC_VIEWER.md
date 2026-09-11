@@ -6,8 +6,7 @@ mode, no sprites, just the VIC-II border color changed at the right
 moment on every scanline.
 
 See `CREDITS.md` for attribution: the technique itself is Aleksi
-Eeben's; this is a from-scratch Oscar64/C port for the Ultimate 64,
-reused as-is from the sibling `landoficeandfire` project.
+Eeben's; this is a from-scratch Oscar64/C port for the Ultimate 64.
 
 ## The technique
 

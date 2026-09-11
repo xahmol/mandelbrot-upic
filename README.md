@@ -6,9 +6,7 @@ on-device at 64 MHz turbo, packs it directly into Upic format (a
 live as it renders, and lets you interactively pan around and zoom
 into any region of the result.
 
-Spun off from [landoficeandfire](https://github.com/xahmol/landoficeandfire),
-which built and hardware-validated the Upic viewer this project
-reuses. See `CREDITS.md` for full attribution.
+See `CREDITS.md` for full attribution.
 
 **Status**: v1.0.0, feature-complete and confirmed working on real
 Ultimate 64 hardware.

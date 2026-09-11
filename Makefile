@@ -58,8 +58,7 @@ VERSION           = v$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)-$(VERSIO
 #                      include/upic_viewer.c's #pragma region(main, ...)),
 #                      which the library's normal 512/256-byte queues
 #                      don't fit alongside. A palette push only ever
-#                      transfers 50 bytes, so 64/16 is plenty -- same
-#                      values proven working in landoficeandfire.
+#                      transfers 50 bytes, so 64/16 is plenty.
 CFLAGS = -i=include \
          -tm=$(SYS) \
          -tf=prg \

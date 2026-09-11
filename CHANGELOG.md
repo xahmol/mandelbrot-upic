@@ -12,8 +12,8 @@ First feature-complete release.
   `docs/MANDELBROT_ALGORITHM.md`.
 - Live picture build-up: the fractal displays column by column as it
   generates, not just once complete.
-- Upic border-color raster display (384x256, 16 colors), reused from
-  `landoficeandfire`. See `docs/UPIC_VIEWER.md`.
+- Upic border-color raster display (384x256, 16 colors). See
+  `docs/UPIC_VIEWER.md`.
 - Interactive pan and zoom: browse mode (WASD/cursor panning, gradual
   zoom-out) and box mode (move/resize a selection box, confirm to zoom
   in), with corner markers drawn directly into the picture buffer. See

@@ -5,17 +5,11 @@
 Border-color raster picture technique by **Aleksi Eeben**
 (aleksi.eeben@me.com) -- see `Source/upic.s` in the original Upic
 package, https://csdb.dk/release/?id=263980. Ported to Oscar64/C for
-the Ultimate 64 in the sibling project
-[landoficeandfire](https://github.com/xahmol/landoficeandfire) by
-Xander Mol; `include/upic_viewer.c`/`upic_viewer.h` and
-`include/rombank.c`/`rombank.h` in this project are carried over
-directly from that port (2026-09-09), with the overlay-loading
-mechanism trimmed out since this project doesn't need it yet -- see
-`include/rombank.h`'s own header comment.
-
-Picture-buffer relocation (part of the picture data moved to $E000,
-freeing low memory for ordinary code) was Aleksi Eeben's own suggestion,
-relayed during landoficeandfire's development.
+the Ultimate 64 by Xander Mol; `include/upic_viewer.c`/`upic_viewer.h`
+and `include/rombank.c`/`rombank.h` implement this port, including a
+picture-buffer relocation (part of the picture data moved to `$E000`,
+freeing low memory for ordinary code) that was Aleksi Eeben's own
+suggestion.
 
 ## Mandelbrot fixed-point algorithm design
 
@@ -43,8 +37,8 @@ lineage of ideas this project draws on.
 
 ## Ultimate 64 Command Interface (UCI) library
 
-Ported from **UBoot64-v2** (https://github.com/xahmol/UBoot64-v2) via
-landoficeandfire, itself based on Ultimate II Dos Lib by
+Ported from **UBoot64-v2** (https://github.com/xahmol/UBoot64-v2),
+itself based on Ultimate II Dos Lib by
 **Scott Hutter** and **Francesco Sblendorio**
 (https://github.com/xlar54/ultimateii-dos-lib) and the official
 `ultimate_dos-1.2.docx`/`command interface.docx`

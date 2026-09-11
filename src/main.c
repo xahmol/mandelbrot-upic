@@ -1,11 +1,10 @@
 /*****************************************************************
 Mandelbrot Upic -- entry point
 
-Ported from landoficeandfire's proven upic_test.c harness: bank ROM
-out, push the palette, generate the fractal (now at 64 MHz turbo, see
-below), display it via the Upic border-color raster loop and let the
-user browse/zoom forever (zoom.c) -- there is no exit; see zoom.h's own
-comment for why.
+Banks ROM out, pushes the palette, generates the fractal (at 64 MHz
+turbo, see below), displays it via the Upic border-color raster loop
+and lets the user browse/zoom forever (zoom.c) -- there is no exit;
+see zoom.h's own comment for why.
 
 Requires Ultimate 64 / U64 Elite 2, firmware 3.15+.
 ******************************************************************/
@@ -18,10 +17,9 @@ Requires Ultimate 64 / U64 Elite 2, firmware 3.15+.
 #include "rombank.h"
 #include "zoom.h"
 
-// uii_setpalette() confirmed rejected ("81,INVALID P...") right after
-// a fresh device reboot (2026-09-09), on final-release firmware 3.15
-// where this exact call is otherwise known-working (landoficeandfire's
-// own iceland_palette) -- working theory: some UCI subsystem beyond
+// uii_setpalette() can be rejected ("81,INVALID P...") right after a
+// fresh device reboot, even on firmware where this exact call is
+// otherwise known-working -- working theory: some UCI subsystem beyond
 // basic detection isn't fully up yet immediately after boot, even
 // though uii_detect() itself already succeeds. Retry a few times with
 // a short settle delay rather than accept the first result -- CIA1

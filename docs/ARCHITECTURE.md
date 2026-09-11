@@ -6,9 +6,8 @@ A Commodore 64 Ultimate demo that generates a Mandelbrot fractal
 on-device at 64 MHz turbo, packs it directly into Upic format (a
 16-color, 384x256 border-color raster picture technique), displays it
 live as it renders, and lets the user interactively pan and zoom into
-any region of the result. Spun off from
-[landoficeandfire](https://github.com/xahmol/landoficeandfire), which
-built and hardware-validated the Upic viewer this project reuses.
+any region of the result. See `CREDITS.md` for the Upic technique's
+own attribution.
 
 ## Program flow
 
