@@ -2,9 +2,7 @@
 
 ## [1.0.0]
 
-First feature-complete release.
-
-### Added
+Initial release.
 
 - Fixed-point (Q5.11) Mandelbrot escape-time generator, with a
   quarter-square multiply table, cardioid/period-2-bulb early-skip,
@@ -25,18 +23,3 @@ First feature-complete release.
   `mandelupic.cfg` alongside `mandelupic.prg` so the Ultimate's own
   firmware auto-loads it, enabling the Command Interface and U64 turbo
   registers this demo needs.
-
-### Fixed
-
-- A real-hardware crash where pressing any key during browsing/zoom
-  dropped the display to a JiffyDOS text screen, root-caused to the
-  permanent ROM-banking trampoline chaining hardware interrupts into
-  real KERNAL/JiffyDOS code while this program's own direct-CIA
-  keyboard polling was active. Fixed by masking interrupts globally
-  for the program's entire lifetime -- see `main.c`'s own comment.
-
-### Removed
-
-- A per-generation histogram-equalised color remap, tried and shipped
-  briefly, then removed on user feedback that it made the picture look
-  worse than the plain linear gradient.
