@@ -1219,6 +1219,14 @@ void upic_restore_display(void)
 // returns NULL (see oscar64manual.md's heap-placement gotcha) -- this
 // project already has its own custom #pragma region(main, ...) below,
 // so this is the safe case that gotcha describes, not the risky one.
+// Shrunk 32 -> 8 (2026-09-11): "main" ran short by ~11 bytes once
+// zoom.c's zoom_out_view() moved in (see zoom.c's own comment) --
+// nothing in this project's own call graph actually reaches
+// uii_add_partition() (the only remaining malloc-using function,
+// ultimate_common_lib.c), so this reservation was pure defensive
+// margin for a function that's dead-code-eliminated here regardless.
+// 8 bytes kept rather than 0, matching the "tiny, defensive default"
+// spirit of the original reservation.
 // Upper bound extended $1000 -> $2000 (2026-09-09): the picture-buffer
 // relocation above (see upic_viewer.h) frees $1000-$1FFF for ordinary
 // low-memory use. This single extension replaces the ENTIRE "lowmem"
@@ -1233,7 +1241,7 @@ void upic_restore_display(void)
 // way widening down to $0200 did -- confirmed no $0801 load-address
 // regression (see the picreloc/upiccode split above, and rebuild+
 // verify `xxd -l2` on any test target after touching these bounds).
-#pragma heapsize(32)
+#pragma heapsize(8)
 #pragma stacksize(210)
 #pragma region(main, 0x0853, 0x1800, , , {code, data, bss, heap, stack})
 

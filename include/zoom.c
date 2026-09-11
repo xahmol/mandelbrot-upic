@@ -60,6 +60,64 @@ static void zoom_clamp_view(void)
         mandel_y0 = MANDEL_DEFAULT_Y1 - UPIC_HEIGHT * mandel_dy;
 }
 
+// Placed in "main" (the default code region), not upiccode (2026-09-11)
+// -- the shared upiccode/moddata/modbss pool had almost no room left
+// after this file's 4-corner/outlined-marker upgrade, while "main" had
+// real headroom. Deliberately does NOT call zoom_clamp_view() above
+// (still in upiccode) -- tried that first, confirmed via the .map's
+// own per-object address audit (this project's own established habit
+// near this boundary) that the cross-region call's proxy overhead
+// actually GREW upiccode's own usage enough to wrap marker_backup into
+// zero page -- a real, silent corruption, not just a theoretical risk.
+// Duplicates the same 4-line clamp inline instead, entirely within
+// "main", to avoid the cross-region call altogether. (A second attempt
+// at recovering the still-remaining ~34 bytes by factoring the 6
+// edge-detected key checks in zoom_select() into a shared helper was
+// ALSO tried and reverted -- the helper's own pointer-parameter call
+// overhead cost more than the code deduplication saved, same class of
+// false economy as "convert parameters to pointers" from this project's
+// own documented history of unreliable micro-optimizations. The 34
+// bytes were found in mandelbrot.c instead -- see its own comment.)
+#pragma code(code)
+
+// Zoom OUT -- widens the CURRENT view by ZOOM_OUT_FACTOR around its own
+// centre, clamped to the original default overview, i.e. one notch
+// out, not an instant jump back to the default. Also floors mandel_dx/
+// dy implicitly via the MANDEL_DEFAULT_DX/DY cap below -- the zoom-IN
+// boundary check (confirm/RETURN, further down this file) has its own
+// floor at 1 raw Q5.11 unit; between the two, neither direction can
+// ever push mandel_dx/dy outside [1, MANDEL_DEFAULT_DX/DY].
+#define ZOOM_OUT_FACTOR 2
+
+static void zoom_out_view(void)
+{
+    fixed_t old_dx = mandel_dx;
+    fixed_t old_dy = mandel_dy;
+
+    mandel_dx *= ZOOM_OUT_FACTOR;
+    mandel_dy *= ZOOM_OUT_FACTOR;
+    if (mandel_dx > MANDEL_DEFAULT_DX) mandel_dx = MANDEL_DEFAULT_DX;
+    if (mandel_dy > MANDEL_DEFAULT_DY) mandel_dy = MANDEL_DEFAULT_DY;
+
+    // Centre stays fixed: new_x0 = (x0 + halfwidth*old_dx) - halfwidth*new_dx
+    //                            = x0 - halfwidth*(new_dx - old_dx)
+    // -- one multiply per axis instead of two.
+    mandel_x0 -= (UPIC_WIDTH  / 2) * (mandel_dx - old_dx);
+    mandel_y0 -= (UPIC_HEIGHT / 2) * (mandel_dy - old_dy);
+
+    // Same bounds check as zoom_clamp_view() (upiccode, used by
+    // zoom_pan()) -- duplicated here rather than called, see this
+    // function's own opening comment for why.
+    if (mandel_x0 < MANDEL_DEFAULT_X0) mandel_x0 = MANDEL_DEFAULT_X0;
+    if (mandel_y0 < MANDEL_DEFAULT_Y0) mandel_y0 = MANDEL_DEFAULT_Y0;
+    if (mandel_x0 + UPIC_WIDTH  * mandel_dx > MANDEL_DEFAULT_X1)
+        mandel_x0 = MANDEL_DEFAULT_X1 - UPIC_WIDTH  * mandel_dx;
+    if (mandel_y0 + UPIC_HEIGHT * mandel_dy > MANDEL_DEFAULT_Y1)
+        mandel_y0 = MANDEL_DEFAULT_Y1 - UPIC_HEIGHT * mandel_dy;
+}
+
+#pragma code(upiccode)
+
 // Corner markers are drawn DIRECTLY INTO THE PACKED PICTURE BUFFER, not
 // VIC-II hardware sprites -- confirmed via two isolated, controlled
 // standalone tests (built and run on real hardware, not just reasoned
@@ -117,13 +175,18 @@ static void zoom_set_pixel(int col, int row, unsigned char color)
     *p = (char)b;
 }
 
-// Each marker is a 4x4 block: a 1-pixel black outline (raw color 0 --
-// reliably black in every selectable palette by construction, "in the
-// set", no separate reservation needed) around a 2x2 white core
-// (ZOOM_MARKER_COLOR_INDEX). All 4 corners get one now (2026-09-11,
-// upgraded from 2 single-pixel markers -- real memory headroom now
-// that sprites/joystick/zoom-out/histogram are gone, see zoom.h).
-#define ZOOM_MARKER_SIZE 4
+// Each marker is a 2x2 solid white block (ZOOM_MARKER_COLOR_INDEX).
+// All 4 corners get one (2026-09-11, upgraded from 2 single-pixel
+// markers -- real memory headroom now that sprites/joystick/histogram
+// are gone, see zoom.h). A 4x4 version with a 1-pixel black outline
+// was tried first and confirmed working on real hardware, but reverted
+// the same day to make room for 'O' (zoom-out) once the shared
+// upiccode/moddata/modbss pool ran short again -- 4 markers and a
+// visible 2x2 core were kept (the user's own priority order put the
+// outline last: "if possible"), see zoom_out_view()'s own comment for
+// the fuller budget story. Outline can come back once more room is
+// found elsewhere.
+#define ZOOM_MARKER_SIZE 2
 
 // Per-marker state: where it's CURRENTLY drawn (top-left of its 4x4
 // block, already clamped into the picture) and the real pixel values
@@ -152,15 +215,15 @@ static void zoom_marker_restore(unsigned char idx)
                 (unsigned char)marker_backup[idx][dr * ZOOM_MARKER_SIZE + dc]);
 }
 
-// col/row here are the TRUE corner point -- the 4x4 block is centered
-// on it (top-left of the block is 2 cells up/left of the corner),
-// then clamped so the WHOLE block stays inside the picture (a corner
-// can legitimately sit right at column 0/383 or row 0/255 --
+// col/row here are the TRUE corner point -- the 2x2 block is centered
+// on it (top-left of the block is 1 cell up/left of the corner), then
+// clamped so the WHOLE block stays inside the picture (a corner can
+// legitimately sit right at column 0/383 or row 0/255 --
 // zoom_move_box()'s own clamp).
 static void zoom_marker_draw(unsigned char idx, int col, int row)
 {
-    int basecol = col - 2;
-    int baserow = row - 2;
+    int basecol = col - 1;
+    int baserow = row - 1;
     unsigned char dr, dc;
 
     if (basecol < 0) basecol = 0;
@@ -172,13 +235,9 @@ static void zoom_marker_draw(unsigned char idx, int col, int row)
     {
         for (dc = 0; dc < ZOOM_MARKER_SIZE; dc++)
         {
-            unsigned char outline = (dr == 0 || dr == ZOOM_MARKER_SIZE - 1
-                                   || dc == 0 || dc == ZOOM_MARKER_SIZE - 1);
-            unsigned char color = outline ? 0 : ZOOM_MARKER_COLOR_INDEX;
-
             marker_backup[idx][dr * ZOOM_MARKER_SIZE + dc] =
                 (char)zoom_get_pixel(basecol + dc, baserow + dr);
-            zoom_set_pixel(basecol + dc, baserow + dr, color);
+            zoom_set_pixel(basecol + dc, baserow + dr, ZOOM_MARKER_COLOR_INDEX);
         }
     }
     marker_col[idx] = basecol;
@@ -294,6 +353,7 @@ static int size_units;
 static unsigned char return_was_down = 0; // edge-detect confirm (RETURN)
 static unsigned char c_was_down = 0;      // edge-detect palette cycling ('C')
 static unsigned char z_was_down = 0;      // edge-detect box-mode toggle ('Z')
+static unsigned char o_was_down = 0;      // edge-detect zoom-out ('O')
 static unsigned char plus_was_down = 0;   // edge-detect grow ('+')
 static unsigned char minus_was_down = 0;  // edge-detect shrink ('-')
 static unsigned char palette_index = 0;   // persists across zoom levels too
@@ -421,6 +481,29 @@ unsigned char zoom_select(void)
         else
         {
             c_was_down = 0;
+        }
+
+        // Zoom OUT -- widens by one notch, clamped to the default
+        // overview; see zoom_out_view()'s own comment. Works from
+        // EITHER mode -- an "abandon whatever I was doing, step back
+        // out" escape hatch. Returns ZOOM_CONFIRMED (main() reacts
+        // identically to a zoom-in confirm) rather than a dedicated
+        // return code.
+        if (key_pressed(KSCAN_O))
+        {
+            if (!o_was_down)
+            {
+                o_was_down = 1;
+                zoom_out_view();
+                box_mode = 0;
+                needs_reset = 1;
+                zoom_markers_hide();
+                return ZOOM_CONFIRMED;
+            }
+        }
+        else
+        {
+            o_was_down = 0;
         }
 
         // Box-mode toggle -- browse mode is the default after
