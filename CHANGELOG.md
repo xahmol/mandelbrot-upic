@@ -21,8 +21,10 @@ First feature-complete release.
 - 4 selectable color gradients (default blue/orange, fire, ice,
   rainbow), cycled live without leaving the current view.
 - Ultimate 64 Elite 2 configuration file
-  (`config/MandelbrotUpic-U64E2.cfg`) enabling the Command Interface
-  and U64 turbo registers this demo needs.
+  (`config/MandelbrotUpic-U64E2.cfg`), deployed/zipped as
+  `mandelupic.cfg` alongside `mandelupic.prg` so the Ultimate's own
+  firmware auto-loads it, enabling the Command Interface and U64 turbo
+  registers this demo needs.
 
 ### Fixed
 

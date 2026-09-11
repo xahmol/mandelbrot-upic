@@ -71,16 +71,20 @@ with no graceful exit path. See `docs/ZOOM_FEATURE.md` for why.
 Requires an **Ultimate 64 / Ultimate 64 Elite 2, firmware 3.15 or
 newer**.
 
-1. Copy `build/mandelupic.prg` (or extract the release ZIP, which
-   places it at `idi8b/mandelupic/mandelupic.prg`) onto your Ultimate's
-   SD card or USB storage.
-2. Load the provided config file (`config/MandelbrotUpic-U64E2.cfg`,
-   for Ultimate 64 Elite 2 boards) via the Ultimate's own configurator
-   (`F2` menu → `Configuration` → `Load from file`) to enable the
-   Command Interface (UCI) and U64 turbo registers this demo needs. If
-   you already have Command Interface and U64 Turbo Registers enabled
-   in your own configuration, this step isn't necessary.
-3. Run `mandelupic.prg` from the Ultimate's file browser.
+1. Copy both `mandelupic.prg` and `mandelupic.cfg` onto your Ultimate's
+   SD card or USB storage, in the same folder -- extracting the
+   release ZIP already places them together (at
+   `idi8b/mandelupic/`), or `make deploy`/`make zip` produce them from
+   source with matching names.
+2. Run `mandelupic.prg` from the Ultimate's file browser.
+
+The Ultimate's own firmware auto-loads a config file that shares its
+base name with the program being run -- `mandelupic.cfg` next to
+`mandelupic.prg` is picked up automatically, no manual "load config"
+step needed. It enables the Command Interface (UCI) and U64 turbo
+registers this demo needs (for an Ultimate 64 Elite 2 board); if your
+own configuration already has both enabled, this has no effect either
+way.
 
 ## Building from source
 
@@ -105,7 +109,7 @@ cp .env.example .env
 | Target | Effect |
 |---|---|
 | `make` / `make all` | Compile to `build/mandelupic.prg`, regenerate `README.pdf`, build the release ZIP |
-| `make deploy` | FTP the compiled `.prg` to the Ultimate device set in `.env` |
+| `make deploy` | FTP the compiled `.prg` and matching `.cfg` to the Ultimate device set in `.env` |
 | `make docs` | Regenerate `README.pdf` via pandoc |
 | `make clean` | Remove build outputs |
 

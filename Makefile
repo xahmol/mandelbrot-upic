@@ -85,6 +85,13 @@ ALLSRCS = $(MAINSRC) \
 # Output
 TARGET = build/$(MAIN).prg
 
+# Ultimate 64 config preset (enables Command Interface + U64 turbo
+# registers this demo needs). Deployed/zipped as $(MAIN).cfg -- SAME
+# base name as $(MAIN).prg, in the SAME directory -- so the Ultimate's
+# own firmware auto-loads it whenever mandelupic.prg is run, no manual
+# "load config" step needed.
+CONFIGFILE = config/MandelbrotUpic-U64E2.cfg
+
 ########################################
 
 # Demo install path on SD/USB (must match any path baked into src/main.c)
@@ -134,6 +141,7 @@ $(README): README.md pandoc-defaults.yaml pandoc-header.tex
 zip: $(TARGET)
 	$(MKDIR) build/$(INSTALL_PATH) 2>$(NULLDEV) ; true
 	cp $(TARGET) build/$(INSTALL_PATH)/$(MAIN).prg
+	cp $(CONFIGFILE) build/$(INSTALL_PATH)/$(MAIN).cfg
 	cp README.md build/$(INSTALL_PATH)/README.md
 	cd build && zip -r $(MAIN)-$(VERSION).zip idi8b/
 	$(RMDIR) build/idi8b 2>$(NULLDEV) ; true
@@ -145,3 +153,4 @@ check-deploy:
 
 deploy: check-deploy $(TARGET)
 	wput -u $(TARGET) $(ULTFTP1)$(MAIN).prg
+	wput -u $(CONFIGFILE) $(ULTFTP1)$(MAIN).cfg
