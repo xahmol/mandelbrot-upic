@@ -2,14 +2,12 @@
 Mandelbrot Upic -- interactive zoom-target selection
 
 Lets the user pick a rectangular sub-region of the CURRENTLY DISPLAYED
-picture to zoom into next. Rewritten from scratch (2026-09-11) on top
-of a confirmed-stable baseline (see main.c's own comment on the global
-IRQ mask) after an earlier attempt at this same feature ran into a
-real-hardware "any key press drops to text mode" crash that turned out
-to predate the whole feature -- see git history (zoom-feature-broken
-branch) for that attempt's own preserved work and partial findings.
+picture to zoom into next, rebuilt on top of a confirmed-stable
+baseline (see main.c's own comment on the global IRQ mask) that fixed
+a real-hardware "any key press drops to text mode" crash predating
+this feature entirely.
 
-Two lessons carried forward from that attempt, deliberately baked into
+Two lessons worth keeping in mind, deliberately baked into
 this version instead of rediscovering them:
   - Corner markers are drawn DIRECTLY INTO THE PACKED PICTURE BUFFER,
     not VIC-II hardware sprites -- confirmed via two isolated,
@@ -23,31 +21,22 @@ this version instead of rediscovering them:
     selectable palette hardcodes its own 16th RGB entry to white at
     compile time.
 
-STATUS (2026-09-11): keyboard-only rebuild in progress. Two-mode
-design -- "browse" (default after generation: WASD/cursor pans the
-current view, 'O' zooms out one notch, clamped to the default overview)
-and "box" (entered via 'Z': all 4 corner markers appear -- each a
-solid 2x2 white block, see zoom.c's own comment above
-zoom_marker_draw() for this design's own history, including a
-4x4/black-outline version that worked but had to be reverted to make
-room for 'O'), WASD/cursor moves the whole box, '+'/'-' resize it with
-the picture's own 3:2 aspect ratio always locked, RETURN confirms and
-zooms in, 'Z' again cancels back to browse without zooming). See
-zoom_select()'s own comment in zoom.c for the full per-key breakdown.
+Two-mode design -- "browse" (default after generation: WASD/cursor
+pans the current view, 'O' zooms out one notch, clamped to the default
+overview) and "box" (entered via 'Z': all 4 corner markers appear --
+each a solid 2x2 white block, see zoom.c's own comment above
+zoom_marker_draw() for this design's own history) -- WASD/cursor moves
+the whole box, '+'/'-' resize it with the picture's own 3:2 aspect
+ratio always locked, RETURN confirms and zooms in, 'Z' again cancels
+back to browse without zooming. See zoom_select()'s own comment in
+zoom.c for the full per-key breakdown, and docs/ZOOM_FEATURE.md for the
+full manual.
 
-Deliberately NOT included yet, to get the rest onto a solid, committed
-footing first:
-  - Joystick input (keyboard only for now).
-  - 'O' zoom-out (didn't get this working in the previous attempt;
-    revisit once everything else here is confirmed stable).
-  - Any quit key -- Q used to tear down and return to BASIC in both
-    the original 2-corner design and the previous attempt's redesign,
-    but the exit sequence hung on real hardware in both, consistent
-    with this project's own documented, unresolved KERNAL-IRQ-vs-ROM-
-    banking bug family (predating even today's global-IRQ-mask fix --
-    that fix covers the picture-viewing loop, not the exit sequence's
-    own ROM-bank restore). Not fixed; there's simply no way to quit
-    now, same as many C64 demos with no graceful exit path.
+Keyboard only -- no joystick input, and no quit key (the exit sequence
+hangs on real hardware for reasons in the same general bug family as
+the interrupt-related issue fixed in main.c, but not fixed by it;
+there's simply no way to quit, same as many C64 demos with no graceful
+exit path).
 ******************************************************************/
 
 #ifndef _ZOOM_H_

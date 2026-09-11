@@ -2,10 +2,11 @@
 # Mandelbrot Upic
 # Commodore 64 Ultimate demo -- generates a Mandelbrot fractal on-device
 # at 64 MHz turbo, packed directly into Upic format, and displays it live
-# via the border-color raster technique. Requires Ultimate 64 / U64
-# Elite 2, firmware 3.15 or newer (uses the fw 3.15+ UCI auto-enable
-# sequence and the GET_PALETTE/SET_PALETTE/SET_PALETTE_COLOR/
-# RESET_PALETTE control commands -- see UCILIBMANUAL.md).
+# via the border-color raster technique. Requires firmware 3.15 or newer
+# (uses the fw 3.15+ UCI auto-enable sequence and the GET_PALETTE/
+# SET_PALETTE/SET_PALETTE_COLOR/RESET_PALETTE control commands -- see
+# UCILIBMANUAL.md) -- in practice an Ultimate 64 Elite 2 for now, since
+# the corresponding C64U firmware hasn't been released yet.
 
 # Target platform
 SYS = c64

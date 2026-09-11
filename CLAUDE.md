@@ -10,7 +10,8 @@ Upic format (a 16-color, 384x256 border-color raster picture
 technique), displays it live as it renders, and lets the user
 interactively pan and zoom into any region of the result. Targets
 **Ultimate firmware 3.15 or newer only** (no fallback path for older
-firmware).
+firmware) -- in practice this means an Ultimate 64 Elite 2 for now,
+since the corresponding C64U firmware hasn't been released yet.
 
 **Status**: v1.0.0, feature-complete. See `README.md` for controls and
 installation, `docs/ARCHITECTURE.md` for the project layout,

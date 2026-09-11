@@ -80,8 +80,9 @@ with no graceful exit path. See `docs/ZOOM_FEATURE.md` for why.
 
 ## Installation
 
-Requires an **Ultimate 64 / Ultimate 64 Elite 2, firmware 3.15 or
-newer**.
+Requires **firmware 3.15 or newer**. As of this release, that means an
+**Ultimate 64 Elite 2** in practice -- the corresponding firmware for
+the original Ultimate 64 (C64U) board hasn't been released yet.
 
 1. Copy both `mandelupic.prg` and `mandelupic.cfg` onto your Ultimate's
    SD card or USB storage, in the same folder -- extracting the

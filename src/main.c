@@ -6,7 +6,8 @@ turbo, see below), displays it via the Upic border-color raster loop
 and lets the user browse/zoom forever (zoom.c) -- there is no exit;
 see zoom.h's own comment for why.
 
-Requires Ultimate 64 / U64 Elite 2, firmware 3.15+.
+Requires firmware 3.15+ -- in practice an Ultimate 64 Elite 2 for now,
+since the corresponding C64U firmware hasn't been released yet.
 ******************************************************************/
 
 #include <c64/cia.h>
