@@ -1,21 +1,19 @@
 /*****************************************************************
 Mandelbrot Upic -- fractal generator (interface)
 
-PHASE 1 (2026-09-09): fixed-point escape-time iteration + a crude
-fixed (non-histogram) palette, PLUS the cardioid/period-2-bulb
-early-skip pulled in from the planned Phase 3 (needed sooner than
-planned -- real hardware timing showed it matters a lot). Confirmed
-rendering a correct, full-detail Mandelbrot set on real hardware --
-see docs/MANDELBROT_ALGORITHM.md for the full phased plan. Palette
-optimisation (Phase 2, histogram-based) is still not implemented.
+Fixed-point (Q5.11) escape-time iteration, a quarter-square-table
+multiply, the cardioid/period-2-bulb early-skip, and 4 selectable
+fixed color gradients -- see docs/MANDELBROT_ALGORITHM.md for the full
+design.
 
 Credit: the fixed-point algorithm design (Q5.11 range/precision
 choice) is based on the documented approach in 0x444454/mandelbr8
 (https://github.com/0x444454/mandelbr8, CC BY 4.0) -- a from-scratch C
 reimplementation for Oscar64, not a port of their 6502 assembly. Their
-squaring-table optimisation is deliberately NOT used here -- see
-docs/MANDELBROT_ALGORITHM.md for why it doesn't fit this project's
-memory layout. See CREDITS.md.
+32KB squaring-table optimisation doesn't fit this project's memory
+layout alongside the 47KB Upic picture buffer -- this project uses a
+much smaller (1KB) quarter-square table instead, a different technique
+with a similar goal (see docs/MANDELBROT_ALGORITHM.md). See CREDITS.md.
 ******************************************************************/
 
 #ifndef _MANDELBROT_H_
@@ -88,11 +86,12 @@ extern fixed_t mandel_dy;
 // Palette: caller must still push mandelbrot_palette (see below) via
 // uii_setpalette() -- this function only fills the pixel buffer.
 //
-// Iteration count -> color mapping is currently a crude fixed gradient
-// (Phase 1), not the histogram-optimised mapping planned for Phase 2
-// (see docs/MANDELBROT_ALGORITHM.md) -- color 0 is reserved for points
-// that reach MANDEL_MAX_ITER (considered "in the set"), colors 1-15
-// spread linearly across escaping iteration counts.
+// Iteration count -> color mapping is a fixed linear gradient (a
+// histogram-equalised remap was tried and removed -- see this file's
+// own top-of-file comment) -- color 0 is reserved for points that
+// reach MANDEL_MAX_ITER (considered "in the set"), colors 1-14 spread
+// linearly across escaping iteration counts, color 15 is reserved for
+// the zoom feature's corner markers.
 //
 // Call after rombank_out() (upic_buffer_reloc, like upic_buffer,
 // genuinely requires MMAP_NO_ROM active to write correctly -- see
@@ -101,22 +100,20 @@ extern fixed_t mandel_dy;
 // 1 MHz this is slow enough to be worth avoiding.
 void mandelbrot_generate(void);
 
-// 16-entry RGB palette matching mandelbrot_generate()'s current
-// (Phase 1) fixed color mapping -- push via uii_setpalette() after
-// calling mandelbrot_generate(). Index 0 = black ("in the set"). Also
-// mandel_palettes[0] below -- kept as its own named symbol too since
-// main.c already references it directly.
+// 16-entry RGB palette matching mandelbrot_generate()'s fixed color
+// mapping -- push via uii_setpalette() after calling
+// mandelbrot_generate(). Index 0 = black ("in the set"), index 15 =
+// white (reserved for the zoom feature's corner markers, see
+// mandel_color()'s own comment). Also mandel_palettes[0] below -- kept
+// as its own named symbol too since main.c already references it
+// directly.
 extern const char mandelbrot_palette[48];
 
 // Selectable base color gradients (2026-09-10) -- all four are 48-byte
 // RGB48 blocks in the exact format uii_setpalette() expects, index 0
-// always black ("in the set", never part of the escaping gradient,
-// same convention regardless of gradient). zoom.c cycles through these
-// on a keypress; which one's active is independent of and unaffected
-// by mandel_bucket_hist's own per-generation histogram equalisation
-// (see mandelbrot.c) -- that decides which of the 15 escaping indices
-// each pixel gets, this decides what RGB color each index displays as,
-// completely orthogonal to each other.
+// always black ("in the set") and index 15 always white (reserved for
+// corner markers), same convention regardless of gradient. zoom.c
+// cycles through these on a keypress.
 #define MANDEL_PALETTE_COUNT 4
 extern const char *const mandel_palettes[MANDEL_PALETTE_COUNT];
 

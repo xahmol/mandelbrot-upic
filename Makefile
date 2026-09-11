@@ -37,8 +37,8 @@ CC = /home/xahmol/oscar64/bin/oscar64
 MAIN = mandelupic
 
 # Build versioning
-VERSION_MAJOR     = 0
-VERSION_MINOR     = 1
+VERSION_MAJOR     = 1
+VERSION_MINOR     = 0
 VERSION_PATCH     = 0
 VERSION_TIMESTAMP = $(shell date "+%Y%m%d-%H%M")
 VERSION           = v$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)-$(VERSION_TIMESTAMP)

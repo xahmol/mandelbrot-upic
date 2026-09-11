@@ -2,70 +2,87 @@
 
 A Commodore 64 Ultimate demo that generates a Mandelbrot fractal
 on-device at 64 MHz turbo, packs it directly into Upic format (a
-16-color, 384x256 border-color raster picture technique), and displays
-it live.
+16-color, 384x256 border-color raster picture technique), displays it
+live as it renders, and lets you interactively pan around and zoom
+into any region of the result.
 
 Spun off from [landoficeandfire](https://github.com/xahmol/landoficeandfire),
-which built and hardware-validated the Upic viewer this project reuses.
-See `CREDITS.md` for full attribution and `docs/ARCHITECTURE.md`/
-`docs/MANDELBROT_ALGORITHM.md` for how it works and what's planned.
+which built and hardware-validated the Upic viewer this project
+reuses. See `CREDITS.md` for full attribution.
 
-**Status**: fixed-point escape-time generator implemented and confirmed
-working on real hardware, live-updating the picture as it renders.
-Interactive zoom (pick a region of the current picture, regenerate at
-that scale) is implemented on the `zoom-feature` branch -- not yet
-confirmed on real hardware, see its own section below for current
-caveats. See `docs/MANDELBROT_ALGORITHM.md` for the full design.
+**Status**: v1.0.0, feature-complete and confirmed working on real
+Ultimate 64 hardware.
 
 ## Contents
 
 - [Controls](#controls)
+- [Installation](#installation)
 - [Building from source](#building-from-source)
+- [Documentation](#documentation)
+- [Changelog](CHANGELOG.md)
 - [Credits](CREDITS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Mandelbrot algorithm design](docs/MANDELBROT_ALGORITHM.md)
 
 ## Controls
 
 Generation starts automatically on launch and the picture builds up
-live. Once it completes, 4 corner-marker sprites appear over the
-picture, outlining a zoom-target rectangle:
+live, left to right. Once it completes, you're in **browse mode**:
 
 | Input | Action |
 |---|---|
-| `W`/`A`/`S`/`D` | Move the active corner |
+| `W`/`A`/`S`/`D` | Pan the current view (no-op at the default overview -- nothing to pan to) |
 | Cursor keys (hold Shift for up/left) | Same, alternative for muscle memory |
-| Joystick, port 2 | Same, directional + fire |
-| `RETURN` or joystick fire | Confirm the active corner, then the other |
+| `Z` | Enter box mode to pick a zoom target |
+| `O` | Zoom out one notch (widens the view, clamped to the original overview) |
 | `C` | Cycle the base color gradient (blue/orange, fire, ice, rainbow) |
-| `Q` | Quit to BASIC |
 
-Picking a zoom target is a two-step process: move the first corner
-into place and confirm, then move the second (opposite) corner and
-confirm again -- this regenerates the fractal at the newly selected
-region, and the same corner-selection screen appears again once it
-completes, so zooming can be repeated. The selection must span at
-least 16 cells in both directions; confirming a smaller one is simply
-ignored so adjustment can continue.
+Panning regenerates the fractal at the same zoom level, shifted --
+each step is a fraction of the current view's own size, so it moves
+less in absolute terms the deeper you've zoomed in.
 
-Joystick **port 2** (`$DC00`) is used deliberately, not port 1 --
-port 1 shares hardware lines with the keyboard matrix and gives
-unreliable readings while keys are also being read, which happens
-every frame on this screen.
+Press `Z` to enter **box mode**: 4 corner markers (solid white 2x2
+blocks) appear, outlining a box that always keeps the picture's own
+3:2 aspect ratio:
+
+| Input | Action |
+|---|---|
+| `W`/`A`/`S`/`D` | Move the whole box |
+| Cursor keys (hold Shift for up/left) | Same, alternative for muscle memory |
+| `+` | Grow the box (aspect ratio unchanged) |
+| `-` | Shrink the box (aspect ratio unchanged) |
+| `RETURN` | Confirm and zoom into the box |
+| `Z` | Cancel back to browse mode without zooming |
+| `C` / `O` | Same as browse mode |
+
+Confirming regenerates the fractal at the selected region and returns
+to browse mode. Repeated zooms compose relative to whatever's
+currently displayed, so zooming, panning, and zooming again all work
+together.
 
 **Zoom precision limit**: the fractal coordinates use a fixed-point
-format with a finite number of fractional bits, which caps how far
+format with a finite number of fractional bits, capping how far
 repeated zooming can go (roughly 16x total from the initial view)
 before individual pixel steps round down to zero and the picture stops
 changing with further zoom. This is a hard limit of the current
-implementation, not a bug.
+implementation, not a bug -- see `docs/MANDELBROT_ALGORITHM.md`.
 
-**Not yet confirmed on real hardware** (`zoom-feature` branch, as of
-2026-09-10): the corner sprites' on-screen position relative to the
-picture is a best-effort calibration guess (see `ZOOM_SPRITE_X0`/
-`ZOOM_SPRITE_Y0` in `include/zoom.c`) -- if the markers don't visually
-line up with the picture, those two constants are the first (and
-should be the only) thing to adjust.
+**No quit key** -- reset or power off to exit, same as many C64 demos
+with no graceful exit path. See `docs/ZOOM_FEATURE.md` for why.
+
+## Installation
+
+Requires an **Ultimate 64 / Ultimate 64 Elite 2, firmware 3.15 or
+newer**.
+
+1. Copy `build/mandelupic.prg` (or extract the release ZIP, which
+   places it at `idi8b/mandelupic/mandelupic.prg`) onto your Ultimate's
+   SD card or USB storage.
+2. Load the provided config file (`config/MandelbrotUpic-U64E2.cfg`,
+   for Ultimate 64 Elite 2 boards) via the Ultimate's own configurator
+   (`F2` menu → `Configuration` → `Load from file`) to enable the
+   Command Interface (UCI) and U64 turbo registers this demo needs. If
+   you already have Command Interface and U64 Turbo Registers enabled
+   in your own configuration, this step isn't necessary.
+3. Run `mandelupic.prg` from the Ultimate's file browser.
 
 ## Building from source
 
@@ -94,5 +111,15 @@ cp .env.example .env
 | `make docs` | Regenerate `README.pdf` via pandoc |
 | `make clean` | Remove build outputs |
 
-Requires **Ultimate firmware 3.15 or newer** (UCI auto-enable, palette
-control commands -- see `UCILIBMANUAL.md`).
+## Documentation
+
+| Document | Covers |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Program flow, components, memory layout overview |
+| [`docs/MANDELBROT_ALGORITHM.md`](docs/MANDELBROT_ALGORITHM.md) | Fixed-point fractal generation algorithm |
+| [`docs/UPIC_VIEWER.md`](docs/UPIC_VIEWER.md) | The Upic border-color raster display technique |
+| [`docs/ZOOM_FEATURE.md`](docs/ZOOM_FEATURE.md) | Interactive pan/zoom/palette control scheme |
+| [`TURBOCONTROLMANUAL.md`](TURBOCONTROLMANUAL.md) | Ultimate 64 CPU speed control library |
+| [`UCILIBMANUAL.md`](UCILIBMANUAL.md) | Ultimate Command Interface (UCI) protocol library |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history |
+| [`CREDITS.md`](CREDITS.md) | Full attribution |
