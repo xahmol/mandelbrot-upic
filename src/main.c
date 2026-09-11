@@ -3,14 +3,9 @@ Mandelbrot Upic -- entry point
 
 Ported from landoficeandfire's proven upic_test.c harness: bank ROM
 out, push the palette, generate the fractal (now at 64 MHz turbo, see
-below), display it via the Upic border-color raster loop until SPACE,
-restore.
-
-Phase 1 (2026-09-09): the fractal generator (include/mandelbrot.c) is
-a real fixed-point escape-time Mandelbrot now, not the earlier
-diagonal-pattern placeholder -- see docs/MANDELBROT_ALGORITHM.md for
-the design and what's still Phase 2/3 (histogram-optimised palette,
-cardioid/period-2-bulb early-skip).
+below), display it via the Upic border-color raster loop and let the
+user browse/zoom forever (zoom.c) -- there is no exit; see zoom.h's own
+comment for why.
 
 Requires Ultimate 64 / U64 Elite 2, firmware 3.15+.
 ******************************************************************/
@@ -89,20 +84,27 @@ int main(void)
 	// escape-time iteration itself, which is by far the slow part.
 	turbo_fast();
 
-	// Generate -> let the user pick a zoom target on the completed
-	// picture (zoom.c, 2026-09-10) -> generate again at the new
-	// bounds -> repeat, until they quit instead of confirming a zoom.
-	// zoom_select() replaces the old plain `while(!upic_show_frame());`
-	// loop -- it still shows the picture the same way, just with
-	// corner-sprite selection UI layered on top; see zoom.h.
-	do
-	{
-		mandelbrot_generate();
-	} while (zoom_select());
+	mandelbrot_generate();
 
-	upic_restore_display();
-	uii_resetpalette();
-	turbo_slow();
-	rombank_restore();  // clean return to BASIC
-	return 0;
+	// Let the user pick a zoom target on the completed picture
+	// (zoom.c) -> generate again at the new bounds -> repeat, forever
+	// -- there is no way out of this loop, see zoom.h's own comment on
+	// why there's no quit key. uii_setpalette() for a 'C' press is
+	// pushed HERE, from main()'s own context, not from inside
+	// zoom_select() itself -- see zoom_pending_palette's own comment
+	// in zoom.h for why.
+	for (;;)
+	{
+		unsigned char zr = zoom_select();
+
+		if (zr == ZOOM_PALETTE_CHANGED)
+		{
+			if (uci_ready)
+				uii_setpalette(zoom_pending_palette);
+			continue;  // same view, no regenerate -- straight back to zoom_select()
+		}
+
+		// ZOOM_CONFIRMED
+		mandelbrot_generate();
+	}
 }

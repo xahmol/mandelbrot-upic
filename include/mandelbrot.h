@@ -70,6 +70,18 @@ extern fixed_t mandel_y0;
 extern fixed_t mandel_dx;
 extern fixed_t mandel_dy;
 
+// The ORIGINAL default view's own bounds -- matches mandel_x0/y0/dx/dy's
+// own initial values (mandelbrot.c) exactly, kept here as named
+// constants so zoom.c can clamp browse-mode panning to never see
+// anything the default overview itself didn't already contain, without
+// hardcoding the same literals a second time.
+#define MANDEL_DEFAULT_X0 -4096
+#define MANDEL_DEFAULT_Y0 -2040
+#define MANDEL_DEFAULT_DX 16
+#define MANDEL_DEFAULT_DY 16
+#define MANDEL_DEFAULT_X1 (MANDEL_DEFAULT_X0 + UPIC_WIDTH  * MANDEL_DEFAULT_DX)
+#define MANDEL_DEFAULT_Y1 (MANDEL_DEFAULT_Y0 + UPIC_HEIGHT * MANDEL_DEFAULT_DY)
+
 // mandelbrot_generate -- fill upic_buffer[]/upic_buffer_reloc[] (see
 // upic_viewer.h) with a rendered Mandelbrot set at the default view,
 // packed directly into Upic's nibble-packed column-major format.
