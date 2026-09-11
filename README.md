@@ -13,6 +13,10 @@ See `CREDITS.md` for full attribution.
 **Status**: v1.0.0, feature-complete and confirmed working on real
 Ultimate 64 hardware.
 
+**[Watch it in action](https://www.youtube.com/watch?v=fWSM7ikNegw)**
+-- real-hardware capture: live generation, all 4 palettes, and
+interactive zoom.
+
 ## Contents
 
 - [Controls](#controls)
