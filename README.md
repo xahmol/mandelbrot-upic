@@ -1,5 +1,7 @@
 # Mandelbrot Upic
 
+![The Mandelbrot set at the default overview, default blue/orange palette, on real Ultimate 64 hardware](screenshots/default-palette.png)
+
 A Commodore 64 Ultimate demo that generates a Mandelbrot fractal
 on-device at 64 MHz turbo, packs it directly into Upic format (a
 16-color, 384x256 border-color raster picture technique), displays it
@@ -37,9 +39,17 @@ Panning regenerates the fractal at the same zoom level, shifted --
 each step is a fraction of the current view's own size, so it moves
 less in absolute terms the deeper you've zoomed in.
 
+The 4 selectable gradients:
+
+![Fire palette: black, deep red, orange, yellow, white](screenshots/fire-palette.png)
+![Ice palette: black, deep blue, cyan, white](screenshots/ice-palette.png)
+![Rainbow palette: red, orange, yellow, green, cyan, blue, violet, magenta](screenshots/rainbow-palette.png)
+
 Press `Z` to enter **box mode**: 4 corner markers (solid white 2x2
 blocks) appear, outlining a box that always keeps the picture's own
 3:2 aspect ratio:
+
+![Box mode: the 4 corner markers outlining a zoom target](screenshots/zoom-markers.png)
 
 | Input | Action |
 |---|---|
@@ -55,6 +65,8 @@ Confirming regenerates the fractal at the selected region and returns
 to browse mode. Repeated zooms compose relative to whatever's
 currently displayed, so zooming, panning, and zooming again all work
 together.
+
+![The result of confirming a zoom into the box shown above -- freshly generated detail at the new, tighter view](screenshots/zoomed-in.png)
 
 **Zoom precision limit**: the fractal coordinates use a fixed-point
 format with a finite number of fractional bits, capping how far
