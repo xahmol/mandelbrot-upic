@@ -54,6 +54,24 @@ int main(void)
 	// -- and before mandelbrot_generate(), which writes part of the
 	// picture to $E000 too.
 
+	// Interrupts masked globally here, for the rest of the program's
+	// entire lifetime, and never re-enabled (2026-09-11) -- root-caused
+	// a real-hardware "any key press drops to a JiffyDOS text screen"
+	// crash (confirmed present even in the completely unmodified,
+	// pre-zoom-feature baseline, so it predates the interactive zoom
+	// work entirely) to mmap_trampoline() (rombank.c) chaining a
+	// same-tick hardware interrupt into real KERNAL/JiffyDOS ROM code
+	// while this program's own direct-CIA keyboard polling is active --
+	// confirmed by permanently masking IRQ here, which eliminated the
+	// crash entirely on real hardware (tested extensively: C key, Q key,
+	// no more drops to text mode). This program never genuinely needs a
+	// real interrupt for anything -- no music, no raster-IRQ effects,
+	// every wait loop in this codebase (render_frame()'s own raster
+	// sync included) is plain busy-polled -- so permanently masking IRQ
+	// costs nothing functionally. NMI (RESTORE key) still isn't masked
+	// by this (SEI can't touch it) but isn't part of this bug family.
+	__asm { sei }
+
 	uci_ready = uii_wait_for_uci(5);
 
 	// Palette pushed before generation -- mandelbrot_generate() shows

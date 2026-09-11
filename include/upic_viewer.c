@@ -1081,17 +1081,13 @@ char upic_show_frame(void)
         nybbles_ready = 1;
     }
 
-    // Still SEI around the render itself: the trampoline makes a real
-    // interrupt firing mid-render SAFE (no crash), but it doesn't make
-    // it FREE -- servicing one mid-scanline would still steal real
-    // cycles and desync that line's border pokes from the raster beam,
-    // a timing glitch (not a crash) the original design's permanent
-    // SEI also avoided. CLI right after so the exit key can still be
-    // polled between frames and any real IRQ (e.g. modplay's own timer
-    // tick) gets its normal chance to run in that gap.
-    __asm { sei }
+    // No local SEI/CLI around the render itself (2026-09-11, was
+    // removed here): interrupts are masked globally and permanently
+    // from main()'s own top-level SEI now, root-causing a real-hardware
+    // "any key press drops to text mode" crash -- see main.c's own
+    // comment for the full story. A local re-enable here would have
+    // undone that for the gap between frames.
     render_frame();
-    __asm { cli }
 
     keyb_poll();
     return key_pressed(KSCAN_SPACE);
