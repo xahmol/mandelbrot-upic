@@ -486,7 +486,10 @@ unsigned char zoom_select(void)
         // Zoom OUT -- widens by one notch, clamped to the default
         // overview; see zoom_out_view()'s own comment. Works from
         // EITHER mode -- an "abandon whatever I was doing, step back
-        // out" escape hatch. Returns ZOOM_CONFIRMED (main() reacts
+        // out" escape hatch. No-op at the default overview already
+        // (nothing to widen to -- same check zoom_pan() uses for its
+        // own no-op case), so it doesn't trigger a pointless regenerate
+        // of an identical picture. Returns ZOOM_CONFIRMED (main() reacts
         // identically to a zoom-in confirm) rather than a dedicated
         // return code.
         if (key_pressed(KSCAN_O))
@@ -494,11 +497,14 @@ unsigned char zoom_select(void)
             if (!o_was_down)
             {
                 o_was_down = 1;
-                zoom_out_view();
-                box_mode = 0;
-                needs_reset = 1;
-                zoom_markers_hide();
-                return ZOOM_CONFIRMED;
+                if (!(mandel_dx == MANDEL_DEFAULT_DX && mandel_dy == MANDEL_DEFAULT_DY))
+                {
+                    zoom_out_view();
+                    box_mode = 0;
+                    needs_reset = 1;
+                    zoom_markers_hide();
+                    return ZOOM_CONFIRMED;
+                }
             }
         }
         else
