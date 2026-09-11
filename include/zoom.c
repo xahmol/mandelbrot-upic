@@ -117,60 +117,95 @@ static void zoom_set_pixel(int col, int row, unsigned char color)
     *p = (char)b;
 }
 
-// Per-marker state: where it's CURRENTLY drawn (already clamped into
-// the picture) and the real pixel value it's covering, so it can be
-// put back before the marker moves again. markers_valid guards the
-// very first draw of a session (nothing to restore yet) and gets
-// cleared whenever the underlying view is about to change entirely
-// (a confirmed zoom -- the backup would refer to a view that's about
-// to be regenerated from scratch anyway).
+// Each marker is a 4x4 block: a 1-pixel black outline (raw color 0 --
+// reliably black in every selectable palette by construction, "in the
+// set", no separate reservation needed) around a 2x2 white core
+// (ZOOM_MARKER_COLOR_INDEX). All 4 corners get one now (2026-09-11,
+// upgraded from 2 single-pixel markers -- real memory headroom now
+// that sprites/joystick/zoom-out/histogram are gone, see zoom.h).
+#define ZOOM_MARKER_SIZE 4
+
+// Per-marker state: where it's CURRENTLY drawn (top-left of its 4x4
+// block, already clamped into the picture) and the real pixel values
+// it's covering, so they can be put back before the marker moves
+// again. markers_valid guards the very first draw of a session
+// (nothing to restore yet) and gets cleared whenever the underlying
+// view is about to change entirely (a confirmed zoom -- the backup
+// would refer to a view that's about to be regenerated from scratch
+// anyway).
 #pragma bss(modbss)
-static char marker_backup[2];
-static int marker_col[2];
-static int marker_row[2];
+static char marker_backup[4][ZOOM_MARKER_SIZE * ZOOM_MARKER_SIZE];
+static int marker_col[4];
+static int marker_row[4];
 static unsigned char markers_valid = 0;
 #pragma bss(bss)
 
 static void zoom_marker_restore(unsigned char idx)
 {
-    zoom_set_pixel(marker_col[idx], marker_row[idx], (unsigned char)marker_backup[idx]);
+    int basecol = marker_col[idx];
+    int baserow = marker_row[idx];
+    unsigned char dr, dc;
+
+    for (dr = 0; dr < ZOOM_MARKER_SIZE; dr++)
+        for (dc = 0; dc < ZOOM_MARKER_SIZE; dc++)
+            zoom_set_pixel(basecol + dc, baserow + dr,
+                (unsigned char)marker_backup[idx][dr * ZOOM_MARKER_SIZE + dc]);
 }
 
-// col/row here are the TRUE corner point, clamped to the picture's own
-// bounds (a corner can legitimately sit right at column 0/383 or row
-// 0/255 -- zoom_move_box()'s own clamp).
+// col/row here are the TRUE corner point -- the 4x4 block is centered
+// on it (top-left of the block is 2 cells up/left of the corner),
+// then clamped so the WHOLE block stays inside the picture (a corner
+// can legitimately sit right at column 0/383 or row 0/255 --
+// zoom_move_box()'s own clamp).
 static void zoom_marker_draw(unsigned char idx, int col, int row)
 {
-    if (col < 0) col = 0;
-    if (col > UPIC_WIDTH - 1) col = UPIC_WIDTH - 1;
-    if (row < 0) row = 0;
-    if (row > UPIC_HEIGHT - 1) row = UPIC_HEIGHT - 1;
+    int basecol = col - 2;
+    int baserow = row - 2;
+    unsigned char dr, dc;
 
-    marker_backup[idx] = (char)zoom_get_pixel(col, row);
-    zoom_set_pixel(col, row, ZOOM_MARKER_COLOR_INDEX);
-    marker_col[idx] = col;
-    marker_row[idx] = row;
+    if (basecol < 0) basecol = 0;
+    if (basecol > UPIC_WIDTH - ZOOM_MARKER_SIZE) basecol = UPIC_WIDTH - ZOOM_MARKER_SIZE;
+    if (baserow < 0) baserow = 0;
+    if (baserow > UPIC_HEIGHT - ZOOM_MARKER_SIZE) baserow = UPIC_HEIGHT - ZOOM_MARKER_SIZE;
+
+    for (dr = 0; dr < ZOOM_MARKER_SIZE; dr++)
+    {
+        for (dc = 0; dc < ZOOM_MARKER_SIZE; dc++)
+        {
+            unsigned char outline = (dr == 0 || dr == ZOOM_MARKER_SIZE - 1
+                                   || dc == 0 || dc == ZOOM_MARKER_SIZE - 1);
+            unsigned char color = outline ? 0 : ZOOM_MARKER_COLOR_INDEX;
+
+            marker_backup[idx][dr * ZOOM_MARKER_SIZE + dc] =
+                (char)zoom_get_pixel(basecol + dc, baserow + dr);
+            zoom_set_pixel(basecol + dc, baserow + dr, color);
+        }
+    }
+    marker_col[idx] = basecol;
+    marker_row[idx] = baserow;
 }
 
 static void zoom_markers_restore_all(void)
 {
     unsigned char i;
     if (markers_valid)
-        for (i = 0; i < 2; i++)
+        for (i = 0; i < 4; i++)
             zoom_marker_restore(i);
 }
 
-// Positions the 2 corner markers (top-left, bottom-right) at the box's
-// actual corners. left/top/right/bottom must already be in the right
-// order (the box is always moved/resized as a whole, so ccol-half_w
-// <= ccol+half_w and crow-half_h <= crow+half_h always hold). Restores
-// the PREVIOUS frame's marker positions first (if any).
+// Positions all 4 corner markers at the box's actual corners.
+// left/top/right/bottom must already be in the right order (the box is
+// always moved/resized as a whole, so ccol-half_w <= ccol+half_w and
+// crow-half_h <= crow+half_h always hold). Restores the PREVIOUS
+// frame's marker positions first (if any).
 static void zoom_markers_update(int left, int top, int right, int bottom)
 {
     zoom_markers_restore_all();
 
     zoom_marker_draw(0, left,  top);
-    zoom_marker_draw(1, right, bottom);
+    zoom_marker_draw(1, right, top);
+    zoom_marker_draw(2, left,  bottom);
+    zoom_marker_draw(3, right, bottom);
     markers_valid = 1;
 }
 

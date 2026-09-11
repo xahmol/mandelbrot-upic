@@ -25,7 +25,10 @@ this version instead of rediscovering them:
 
 STATUS (2026-09-11): keyboard-only rebuild in progress. Two-mode
 design -- "browse" (default after generation: WASD/cursor pans the
-current view) and "box" (entered via 'Z': 2 corner markers appear,
+current view) and "box" (entered via 'Z': all 4 corner markers appear
+-- each a 4x4 block, a 1-pixel black outline around a 2x2 white core,
+upgraded from an earlier 2-marker/single-pixel design once real memory
+headroom turned up -- see zoom.c's own comment above zoom_marker_draw()),
 WASD/cursor moves the whole box, '+'/'-' resize it with the picture's
 own 3:2 aspect ratio always locked, RETURN confirms and zooms in, 'Z'
 again cancels back to browse without zooming). See zoom_select()'s own
