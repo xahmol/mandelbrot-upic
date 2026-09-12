@@ -1039,7 +1039,39 @@ static void render_frame(void)
         sta $d031
         stx $d031
 
-        ldx #$51                 // timing pad to start of visible area
+        // Widened 2026-09-12 from the original $51: the leftmost 1-2
+        // native columns were painting just before the visible raster
+        // window opened, invisible on a real screen even though a
+        // direct memory read confirmed they were correctly written
+        // into the packed buffer -- most visible as the box-mode
+        // corner markers' LEFT pair going missing on real hardware,
+        // even at moderate box sizes (not a zoom.c math bug -- that was
+        // checked and ruled out separately, see zoom.c's own history).
+        //
+        // Bisected against real hardware, not guessed (right-side
+        // marker position + picture's own right-edge content bound,
+        // measured in an OBS capture; buffer contents confirmed
+        // unchanged throughout via direct memory reads -- only the
+        // picture's SCREEN position moves, never the underlying data):
+        //   $51 (+0):  safe, but left markers invisible.
+        //   $59 (+8):  safe (+21px), still not enough.
+        //   $69 (+24): safe (+58px), still not enough.
+        //   $A5 (+84): left markers finally visible, but this exceeds
+        //              the render loop's real per-line cycle budget --
+        //              each line's paint falls a little further behind
+        //              the raster beam than the line before (the
+        //              per-line raster-sync wait can only catch the
+        //              NEXT available line tick, not claw back time
+        //              already lost mid-line), producing a visible
+        //              diagonal skew that worsens down the frame and
+        //              cuts the picture off before the bottom.
+        //   $87 (+54): bisecting +24/+84 -- confirmed both safe (clean
+        //              rectangular picture, no skew, full 256 rows) AND
+        //              sufficient (all 4 corner markers visible,
+        //              confirmed via screenshot with all 4 corner-
+        //              marker blobs measured, not eyeballed). This is
+        //              the value in use.
+        ldx #$87
     delay:
         dex
         bne delay
@@ -1225,8 +1257,17 @@ void upic_restore_display(void)
 // uii_add_partition() (the only remaining malloc-using function,
 // ultimate_common_lib.c), so this reservation was pure defensive
 // margin for a function that's dead-code-eliminated here regardless.
-// 8 bytes kept rather than 0, matching the "tiny, defensive default"
-// spirit of the original reservation.
+// Shrunk 8 -> 0 (2026-09-12): mandelbrot.c's fixed_sqr()/fixed_mul()
+// needed +15 bytes each in "main" (saturating-overflow fix, see their
+// own comments) and this region had exactly zero bytes of slack left
+// even before that -- reclaiming this reservation is the same
+// "provably dead code, pure defensive margin" case the paragraph above
+// already documents (uii_add_partition() is unreachable from this
+// build's own call graph), just taken one step further now that every
+// byte here is contested. If a future build actually reaches a
+// malloc()-using function, this will need to grow back (and MUST stay
+// in this region's own section list when it does -- see the
+// heap-placement gotcha noted above).
 // Upper bound extended $1000 -> $2000 (2026-09-09): the picture-buffer
 // relocation above (see upic_viewer.h) frees $1000-$1FFF for ordinary
 // low-memory use. This single extension replaces the ENTIRE "lowmem"
@@ -1241,8 +1282,16 @@ void upic_restore_display(void)
 // way widening down to $0200 did -- confirmed no $0801 load-address
 // regression (see the picreloc/upiccode split above, and rebuild+
 // verify `xxd -l2` on any test target after touching these bounds).
-#pragma heapsize(8)
-#pragma stacksize(210)
+// Shrunk 210 -> 80 (2026-09-12, same overflow this heapsize comment
+// describes): unlike heapsize, this one isn't a judgment call --
+// Oscar64 statically computes the program's real worst-case stack
+// depth and hard-errors ("Static stack usage exceeds stack segment")
+// if the declared size is ever insufficient, confirmed by bisecting
+// down to the exact minimum (68) before picking 80 for a little
+// margin. 210 was never a measured requirement, just an unexamined
+// round-number default -- nothing here needed anywhere near that much.
+#pragma heapsize(0)
+#pragma stacksize(80)
 #pragma region(main, 0x0853, 0x1800, , , {code, data, bss, heap, stack})
 
 // modlowbss: $0200-$0800, BSS ONLY -- confirmed by direct test (2026-09-09)

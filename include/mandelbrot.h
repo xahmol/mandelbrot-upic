@@ -46,6 +46,13 @@ typedef int fixed_t;
 #define FIXED_ONE   (1 << FIXED_SHIFT)          // 1.0 in Q5.11 = 2048
 #define FIXED4      (4 << FIXED_SHIFT)          // 4.0 in Q5.11 -- escape-radius-squared threshold
 
+// Largest magnitude a positive fixed_t can represent (~15.9995, one
+// raw unit short of 16.0). fixed_sqr()/fixed_mul() saturate to this
+// instead of letting a true result above it silently wrap through the
+// 16-bit (fixed_t) return type -- see their own comments in
+// mandelbrot.c for the real-hardware bug this fixes (2026-09-12).
+#define FIXED_MAX   0x7FFF
+
 #define MANDEL_MAX_ITER 32
 
 // Current view bounds -- MUTABLE (2026-09-10, were #define constants)

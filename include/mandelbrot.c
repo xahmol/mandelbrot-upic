@@ -125,11 +125,37 @@ static inline unsigned qmul8u(unsigned char a, unsigned char b)
 // mundane one: the 1024-byte sq_table[] above didn't fit in "main"'s
 // own data budget -- see its own comment for how that got solved
 // (placement, not a size/algorithm change).
+// SATURATES instead of wrapping when the true product's magnitude
+// exceeds what a 16-bit fixed_t can hold (2026-09-12 -- real bug,
+// found via a forum challenge to this file's earlier "it's the add/
+// sub, not the multiply" diagnosis of visible noise speckles, then
+// root-caused by reading real Ultimate 64 hardware's actual picture
+// buffer and bisecting exactly which truncation point was needed to
+// reproduce it byte-for-byte, see CREDITS.md). The quarter-square
+// decomposition above is exact -- this isn't a precision problem in
+// the multiply algorithm itself, it's that `product >> FIXED_SHIFT`
+// can legitimately be a value Q5.11 has no room for (magnitude
+// >= 16.0, raw >= 32768), and casting that down to fixed_t (16-bit
+// signed) previously wrapped it into essentially-garbage output
+// instead. Concretely hit inside mandel_in_cardioid_or_bulb() below:
+// at extreme-|cx| pixels (near the view's own left edge) `q` and
+// `q+xm` can EACH be several units wide, and their PRODUCT can exceed
+// 16.0 even though neither operand alone does -- confirmed via direct
+// hardware trace, this silently flipped the cardioid/bulb test's
+// result at those pixels (wrapped to a large negative value, which
+// then falsely compared as "inside the set"), rendering them solid
+// black instead of their correct fast-escape color. Saturating to
+// FIXED_MAX (rather than clamping to 0 or leaving it wrapped) keeps
+// the result's SIGN correct and, since FIXED_MAX vastly exceeds any
+// legitimate comparison threshold this function's two call sites ever
+// use it against, it always resolves comparisons the same way an
+// unbounded-range result would -- see fixed_sqr()'s own comment for
+// the other, more frequently-hit call site this same technique fixes.
 static fixed_t fixed_mul(fixed_t a, fixed_t b)
 {
     unsigned char neg = 0;
     unsigned char al, ah, bl, bh;
-    unsigned long p0, p1, p2, p3, product;
+    unsigned long p0, p1, p2, p3, product, mag;
 
     if (a < 0) { a = (fixed_t)(-a); neg ^= 1; }
     if (b < 0) { b = (fixed_t)(-b); neg ^= 1; }
@@ -144,8 +170,11 @@ static fixed_t fixed_mul(fixed_t a, fixed_t b)
     p2 = qmul8u(ah, bl);
     p3 = qmul8u(ah, bh);
     product = p0 + ((p1 + p2) << 8) + (p3 << 16);
+    mag = product >> FIXED_SHIFT;
+    if (mag > (unsigned long)FIXED_MAX)
+        mag = (unsigned long)FIXED_MAX;
 
-    return (fixed_t)(neg ? -(long)(product >> FIXED_SHIFT) : (long)(product >> FIXED_SHIFT));
+    return (fixed_t)(neg ? -(long)mag : (long)mag);
 }
 
 // x*x, for the (common -- two of three multiplies per iteration are
@@ -154,10 +183,38 @@ static fixed_t fixed_mul(fixed_t a, fixed_t b)
 // redundant: with a=b, al*bh and ah*bl (p1/p2 above) are the exact
 // same value, computed once and doubled here instead of computed
 // twice -- 3 qmul8u() calls instead of 4.
+//
+// SATURATES instead of wrapping (2026-09-12) -- see fixed_mul()'s own
+// comment for the full story and how this was found/verified; this is
+// the more frequently-hit of the two call sites. mandel_iterate()'s
+// escape check (zx2+zy2 > FIXED4) only ever runs on zx/zy values that
+// already passed the SAME check one iteration ago, but that still
+// allows |zx|/|zy| up to about 6.0 real by the time they're squared
+// again next iteration (zx2<=4.0, zy2<=4.0 individually, so
+// zx_new=zx2-zy2+cx can reach roughly [-6,+5] for this project's
+// coordinate ranges) -- comfortably inside what a 16-bit fixed_t can
+// STORE (+-16.0), but its SQUARE (up to 36.0) is not, so the old
+// wrapping return corrupted zx2/zy2 right before the very check meant
+// to catch escape, occasionally shifting a pixel's escape iteration
+// (and so its color) by a few steps. Saturating to FIXED_MAX guarantees
+// zx2+zy2 always correctly exceeds FIXED4 (4.0) in this case --
+// confirmed byte-for-byte against real hardware AND an independent
+// double-precision reference render, 0 pixels differing across the
+// full default view once both this and fixed_mul()'s saturation are
+// in place (see CREDITS.md).
+//
+// This region's own budget is razor-thin (see mandelbrot.h's FIXED_MAX
+// comment) -- an early-out version tried here first (`if (a>=FIXED4)
+// return FIXED_MAX;` before ever computing the product, skipping the
+// qmul8u() calls entirely in the overflow case) actually compiled
+// LARGER (+33 bytes) than this compute-then-clamp version (+15 bytes),
+// somewhat counter to the "less work done" intuition -- measured via
+// the .map, not assumed; kept the smaller one. Don't re-"optimize"
+// this into an early-out without re-measuring against the .map.
 static fixed_t fixed_sqr(fixed_t a)
 {
     unsigned char al, ah;
-    unsigned long p0, p1, p3, product;
+    unsigned long p0, p1, p3, product, mag;
 
     if (a < 0)
         a = (fixed_t)(-a);
@@ -169,8 +226,9 @@ static fixed_t fixed_sqr(fixed_t a)
     p1 = qmul8u(al, ah);
     p3 = qmul8u(ah, ah);
     product = p0 + (p1 << 9) + (p3 << 16);   // (p1+p1)<<8 == p1<<9
+    mag = product >> FIXED_SHIFT;
 
-    return (fixed_t)(long)(product >> FIXED_SHIFT);
+    return (mag > (unsigned long)FIXED_MAX) ? FIXED_MAX : (fixed_t)(long)mag;
 }
 
 // Default per-pixel step in both axes: EXACTLY 16 (= 1/128 in Q5.11),

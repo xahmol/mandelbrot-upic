@@ -369,6 +369,25 @@ static void zoom_resize(int delta)
 // Moves the WHOLE box by ZOOM_MOVE_STEP per held direction, clamped so
 // it stays fully within the picture's own cell bounds at the CURRENT
 // size.
+//
+// Max bound is UPIC_WIDTH - half_w, NOT UPIC_WIDTH - 1 - half_w
+// (2026-09-12 fix): the box's true INCLUSIVE right edge is
+// ccol+half_w-1 (width = 2*half_w cells starting at left=ccol-half_w,
+// see the RETURN/confirm code below, which already uses exactly this
+// left+width-1 range), so the correct bound is ccol+half_w-1 <=
+// UPIC_WIDTH-1, i.e. ccol <= UPIC_WIDTH-half_w. The old, off-by-one
+// bound was harmless for ordinary box sizes (it just let ccol settle
+// one cell short of where it should), but at size_units==ZOOM_UNIT_MAX
+// (64, "the whole picture") it made the min bound (half_w=192) and old
+// max bound (UPIC_WIDTH-1-half_w=191) simultaneously unsatisfiable --
+// confirmed by exhaustively simulating every reachable size_units in
+// Python, not assumed -- so ccol always settled on whichever clamp ran
+// last (191), one cell short of the true center (192), making
+// left=ccol-half_w go negative (-1). zoom_marker_draw()'s own >=0
+// clamp absorbed that specific case without visible corruption, but
+// see zoom_markers_update()'s own call site below for the OTHER half
+// of this fix -- the right/bottom marker position, which had the same
+// off-by-one at every box size, not just the max one.
 static void zoom_move_box(void)
 {
     unsigned char dir = zoom_read_direction();
@@ -381,9 +400,9 @@ static void zoom_move_box(void)
     if (dir & ZOOM_DIR_DOWN)  crow += ZOOM_MOVE_STEP;
 
     if (ccol < half_w) ccol = half_w;
-    if (ccol > UPIC_WIDTH - 1 - half_w) ccol = UPIC_WIDTH - 1 - half_w;
+    if (ccol > UPIC_WIDTH - half_w) ccol = UPIC_WIDTH - half_w;
     if (crow < half_h) crow = half_h;
-    if (crow > UPIC_HEIGHT - 1 - half_h) crow = UPIC_HEIGHT - 1 - half_h;
+    if (crow > UPIC_HEIGHT - half_h) crow = UPIC_HEIGHT - half_h;
 }
 
 // Browse-mode movement: pans the CURRENT view -- shifts mandel_x0/y0
@@ -444,7 +463,16 @@ unsigned char zoom_select(void)
         {
             int half_w = size_units * 3;
             int half_h = size_units * 2;
-            zoom_markers_update(ccol - half_w, crow - half_h, ccol + half_w, crow + half_h);
+            // right/bottom are ccol+half_w-1 / crow+half_h-1, NOT
+            // ccol+half_w / crow+half_h (2026-09-12 fix, see
+            // zoom_move_box()'s own comment on the same root cause):
+            // the box's true INCLUSIVE right/bottom edge is one cell
+            // less than the un-adjusted sum -- matches exactly what the
+            // RETURN/confirm code below computes as left+width-1. The
+            // old version drew the right/bottom corner markers one cell
+            // past the box's actual edge, at every box size (not just
+            // the max-size case zoom_move_box() fixes).
+            zoom_markers_update(ccol - half_w, crow - half_h, ccol + half_w - 1, crow + half_h - 1);
         }
 
         // Keeps redrawing the CURRENT (already-complete) picture via
