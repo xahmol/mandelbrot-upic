@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.1]
+
+Real-hardware bug-fix pass, plus a palette rework.
+
+- Fixed a fixed-point overflow causing noise speckles in the generated
+  fractal (`fixed_sqr`/`fixed_mul` in `include/mandelbrot.c`). See
+  `CREDITS.md`.
+- Fixed two zoom-box off-by-one bugs (`include/zoom.c`): a
+  self-contradictory clamp at the largest box size, and the right/
+  bottom corner markers landing one cell past the box's true edge.
+- Fixed the picture's horizontal alignment (`render_frame()`'s timing
+  pad in `include/upic_viewer.c`) so the box mode's left-edge corner
+  markers no longer fall partly off-screen.
+- Reworked all 4 color gradients for distinctness: every gradient's
+  adjacent steps (including the black/white boundary steps) are now
+  comfortably separated, and no two gradients read as near-identical
+  at the same escape-iteration band. The former `ice` gradient was
+  replaced by `amethyst` (black -> deep violet -> vivid magenta -> hot
+  pink -> pale pink). See `docs/MANDELBROT_ALGORITHM.md`'s "Palettes"
+  section for the full reasoning.
+- Confirmed working on firmware 3.15a in addition to 3.15.
+
 ## [1.0.0]
 
 Initial release.

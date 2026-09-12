@@ -10,8 +10,8 @@ into any region of the result.
 
 See `CREDITS.md` for full attribution.
 
-**Status**: v1.0.0, feature-complete and confirmed working on real
-Ultimate 64 hardware.
+**Status**: v1.0.1, feature-complete and confirmed working on real
+Ultimate 64 hardware (firmware 3.15 and 3.15a).
 
 **[Watch it in action](https://www.youtube.com/watch?v=fWSM7ikNegw)**
 -- real-hardware capture: live generation, all 4 palettes, and
@@ -37,7 +37,7 @@ live, left to right. Once it completes, you're in **browse mode**:
 | Cursor keys (hold Shift for up/left) | Same, alternative for muscle memory |
 | `Z` | Enter box mode to pick a zoom target |
 | `O` | Zoom out one notch (widens the view, clamped to the original overview) |
-| `C` | Cycle the base color gradient (blue/orange, fire, ice, rainbow) |
+| `C` | Cycle the base color gradient (sunset, fire, amethyst, rainbow) |
 
 Panning regenerates the fractal at the same zoom level, shifted --
 each step is a fraction of the current view's own size, so it moves
@@ -46,7 +46,7 @@ less in absolute terms the deeper you've zoomed in.
 The 4 selectable gradients:
 
 ![Fire palette: black, deep red, orange, yellow, white](screenshots/fire-palette.png)
-![Ice palette: black, deep blue, cyan, white](screenshots/ice-palette.png)
+![Amethyst palette: black, deep violet, vivid magenta, hot pink, pale pink](screenshots/amethyst-palette.png)
 ![Rainbow palette: red, orange, yellow, green, cyan, blue, violet, magenta](screenshots/rainbow-palette.png)
 
 Press `Z` to enter **box mode**: 4 corner markers (solid white 2x2
