@@ -131,12 +131,56 @@ measurement, readable via the Ultimate's own memory-read API.
 ## Palettes
 
 Four selectable 48-byte RGB48 gradients (`mandelbrot_palette`,
-`mandel_palette_fire`, `mandel_palette_ice`, `mandel_palette_rainbow`),
+`mandel_palette_fire`, `mandel_palette_amethyst`, `mandel_palette_rainbow`),
 cycled via `C` on the zoom screen (`zoom.c`). Each maps
 `mandel_color()`'s linear iteration-count-to-index gradient (0 = in
 the set/black, 1-14 = linearly spread across escaping iteration
 counts, 15 = reserved for the zoom feature's corner markers, white in
 every gradient by construction) to actual RGB colors.
+
+All 4 gradients were reworked 2026-09-12 (forum + direct feedback,
+two rounds) against two concrete, measured problems, not just
+eyeballed:
+
+- **Adjacent steps too close to perceive as distinct.** A forum
+  reader counted 11 visible shading bands in a screenshot and asked
+  why not 14; mapping that screenshot's actual pixels to nearest
+  palette index confirmed indices 1-2 covered under 1% of visible
+  pixels between them -- present in the data, essentially invisible on
+  screen, because they sat only ~25-30 RGB units from pure black.
+  Separately, `mandelbrot_palette`'s pale end had the same problem
+  approaching white. Every gradient's every adjacent step, including
+  the 0->1 and 14->15 boundaries against the fixed black/white
+  endpoints, is now checked to be at least ~26-37 RGB units apart
+  (most are 40-100+) -- verified by generating swatch renders and
+  measuring, not assumed.
+- **Two palettes reading as near-identical.** The original default
+  (blue -> pale -> orange/red) and the palette then called
+  `mandel_palette_ice` (blue -> cyan -> white) turned out to share an
+  almost exact blue ramp across their first 9 entries, hand-picked
+  separately and never compared side by side -- since the fractal's
+  exterior "lake" is dominated by exactly those low-iteration colors,
+  the two looked nearly the same for most of the picture. Fixed by
+  keeping default's own *identity* (the blue/pale/orange/red "sunset"
+  gradient the project shipped with, cool end shifted toward
+  indigo/violet rather than navy) and giving the fourth slot a
+  completely different theme rather than a blue variant at all. That
+  slot went through two more names before settling: a teal/cyan/mint
+  "glacier" redesign satisfied the distance checks but read as flat
+  and boring next to the other three; reverted in favor of
+  `mandel_palette_amethyst` (black -> deep violet -> vivid magenta ->
+  hot pink -> pale pink), built from keyframes resampled at equal RGB
+  arc-length so the color spread stays even across all 15 steps
+  regardless of how the hue curves, and pushed toward more saturated,
+  brighter tones per direct feedback ("move from the purples to the
+  more brights"). Verified index-by-index against all three other
+  palettes: every same-position pair is at least ~32 RGB units apart
+  (most 35+; the tightest is index 1, the shared dark corner where
+  amethyst, the sunset default, and fire's pure-red start all compete
+  for limited room -- was as low as 21 before any of this).
+
+See `mandelbrot.c`'s own comments on each array for the full
+reasoning, keyframe choices, and exact RGB-distance numbers.
 
 ## Memory budget
 

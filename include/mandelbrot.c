@@ -509,70 +509,109 @@ void mandelbrot_generate(void)
     mandel_gen_mins   = cia1.todm;
 }
 
-// Blue -> pale -> orange/red gradient, hand-picked (cosmetic choice,
-// not algorithmic -- see docs/MANDELBROT_ALGORITHM.md). These 16 RGB
-// values themselves are still fixed; what's now histogram-equalised
-// (2026-09-10, see mandel_bucket_hist's own comment) is WHICH pixels
-// get which of these 15 escaping shades, redistributed per generation
-// to match the actual color distribution instead of a naive linear
-// split. Index 0 = black, matches mandel_color()'s "in the set" case.
+// "Sunset": black -> indigo -> blue -> pale -> gold -> orange -> deep
+// red. This is the ORIGINAL default's own theme (2026-09-12: briefly
+// swapped out for a blue-to-white gradient in the same session, then
+// reverted -- see git history/CREDITS.md if that detour matters to
+// future-you), redesigned twice over since:
+//
+// 1) The original version's first 9 entries turned out to be an almost
+//    exact copy of what was then mandel_palette_ice's own blue ramp
+//    (both hand-picked separately, never compared side by side) --
+//    since the fractal's exterior "lake" is dominated by exactly these
+//    low-iteration/early-index colors, the two palettes looked nearly
+//    identical for most of the picture. Fixed by widening this
+//    gradient's own hue path (an indigo/violet-leaning start rather
+//    than pure navy blue) and giving the other palette a genuinely
+//    different theme instead (see mandel_palette_amethyst below).
+// 2) Index 1 was only ~30-60 RGB units from pure black -- barely
+//    perceptible as a distinct step from "in the set" on real
+//    hardware/video capture, the same class of problem as the pale-end
+//    crowding below, just at the other end (forum feedback: "I count
+//    11 shades, shouldn't that be 14?" -- confirmed by mapping a real
+//    screenshot's pixels to nearest palette index: indices 1-2 were
+//    both under 1% of any visible pixels, i.e. present but essentially
+//    invisible). Every step here, including 0->1 and 14->15, is now a
+//    deliberately-checked >=37 RGB units apart (most are 50-330) --
+//    verified by generating swatch renders and measuring adjacent
+//    distances, not eyeballed.
 const char mandelbrot_palette[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
-    0x00,0x07,0x3c,    //  1
-    0x00,0x1a,0x69,    //  2
-    0x0a,0x35,0x8c,    //  3
-    0x14,0x5a,0xa0,    //  4
-    0x28,0x82,0xb4,    //  5
-    0x50,0xaa,0xc8,    //  6
-    0x8c,0xcd,0xdc,    //  7
-    0xc8,0xe6,0xeb,    //  8
-    0xff,0xf5,0xdc,    //  9
-    0xff,0xdc,0x96,    // 10
-    0xff,0xbe,0x5a,    // 11
-    0xff,0x96,0x28,    // 12
-    0xe6,0x64,0x14,    // 13
-    0xb4,0x3c,0x0a,    // 14
+    0x19,0x04,0x27,    //  1
+    0x20,0x13,0x4a,    //  2
+    0x1b,0x29,0x68,    //  3
+    0x16,0x40,0x87,    //  4
+    0x2c,0x62,0xa4,    //  5
+    0x5b,0x8f,0xbf,    //  6
+    0x89,0xbc,0xda,    //  7
+    0xbd,0xd7,0xda,    //  8
+    0xf2,0xeb,0xcf,    //  9
+    0xff,0xd7,0x99,    // 10
+    0xff,0xb6,0x54,    // 11
+    0xff,0x8b,0x2e,    // 12
+    0xf9,0x5e,0x13,    // 13
+    0xc8,0x2d,0x0a,    // 14
     0xff,0xff,0xff,    // 15: reserved for the zoom feature's corner markers (mandel_color() never emits this index)
 };
 
-// Black -> deep red -> orange -> yellow -> white. Hand-picked, same
-// cosmetic-choice basis as mandelbrot_palette above.
+// Black -> deep red -> orange -> yellow -> white. Same cosmetic-choice
+// basis as mandelbrot_palette above -- and the same index-1-too-close-
+// to-black issue that gradient had (fixed 2026-09-12, same reasoning:
+// every step, including 0->1, now checked >=28 RGB units apart).
 const char mandel_palette_fire[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
-    0x20,0x00,0x00,    //  1
-    0x40,0x00,0x00,    //  2
-    0x60,0x08,0x00,    //  3
-    0x80,0x10,0x00,    //  4
-    0xa0,0x20,0x00,    //  5
-    0xc0,0x30,0x00,    //  6
-    0xe0,0x40,0x00,    //  7
-    0xff,0x50,0x00,    //  8
-    0xff,0x70,0x00,    //  9
-    0xff,0x90,0x00,    // 10
-    0xff,0xb0,0x00,    // 11
-    0xff,0xd0,0x20,    // 12
-    0xff,0xe8,0x60,    // 13
-    0xff,0xf4,0xa0,    // 14
+    0x24,0x00,0x00,    //  1
+    0x45,0x01,0x00,    //  2
+    0x64,0x03,0x00,    //  3
+    0x83,0x08,0x00,    //  4
+    0xa2,0x11,0x00,    //  5
+    0xc1,0x1c,0x00,    //  6
+    0xde,0x35,0x00,    //  7
+    0xfc,0x4d,0x00,    //  8
+    0xff,0x6b,0x00,    //  9
+    0xff,0x8a,0x00,    // 10
+    0xff,0xa8,0x13,    // 11
+    0xff,0xc7,0x27,    // 12
+    0xff,0xde,0x5e,    // 13
+    0xff,0xf5,0x96,    // 14
     0xff,0xff,0xff,    // 15
 };
 
-// Black -> deep blue -> cyan -> white.
-const char mandel_palette_ice[48] = {
+// "Amethyst": black -> deep violet -> vivid magenta -> hot pink -> pale
+// pink. Replaced the teal/mint "glacier" gradient (2026-09-12, same
+// session) on direct feedback: glacier read as flat/boring next to the
+// others, and an earlier from-scratch purple/magenta design (also
+// called "amethyst" before it got swapped out for glacier) was
+// preferred -- brought back here, pushed further from its muted violet
+// start toward more saturated, brighter magenta/pink throughout per
+// that feedback ("move from the purples to the more brights"). Built
+// from 9 keyframes and resampled at equal RGB arc-length (not equal
+// blend fraction) so the total color distance spreads evenly across
+// all 15 steps regardless of how the hue curves -- every interior step
+// is >=30 RGB units from its neighbor (most 31-35), matching the other
+// three gradients' standard. Index 1 was deliberately placed to stay
+// clear of both mandelbrot_palette's indigo start and mandel_palette_
+// fire's pure-red start at once (their shared dark corner leaves little
+// room: pushing further from one pushes closer to the other) -- best
+// achievable while still reading as violet/magenta rather than navy or
+// maroon was ~32 RGB units from each; every other index is >=35 units
+// from its same-position counterpart in every other palette.
+const char mandel_palette_amethyst[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
-    0x00,0x00,0x20,    //  1
-    0x00,0x00,0x40,    //  2
-    0x00,0x10,0x60,    //  3
-    0x00,0x20,0x80,    //  4
-    0x00,0x38,0xa0,    //  5
-    0x00,0x50,0xc0,    //  6
-    0x00,0x70,0xe0,    //  7
-    0x00,0x90,0xff,    //  8
-    0x20,0xb0,0xff,    //  9
-    0x50,0xc8,0xff,    // 10
-    0x80,0xdc,0xff,    // 11
-    0xb0,0xec,0xff,    // 12
-    0xd0,0xf6,0xff,    // 13
-    0xe8,0xfb,0xff,    // 14
+    0x37,0x00,0x32,    //  1
+    0x4d,0x00,0x48,    //  2
+    0x64,0x00,0x5f,    //  3
+    0x7d,0x00,0x73,    //  4
+    0x96,0x00,0x87,    //  5
+    0xb0,0x00,0x98,    //  6
+    0xcb,0x02,0xa8,    //  7
+    0xe8,0x0c,0xae,    //  8
+    0xfc,0x23,0xa8,    //  9
+    0xfe,0x43,0xa6,    // 10
+    0xff,0x62,0xac,    // 11
+    0xff,0x80,0xb7,    // 12
+    0xff,0x9c,0xc4,    // 13
+    0xff,0xb9,0xd2,    // 14
     0xff,0xff,0xff,    // 15
 };
 
@@ -604,6 +643,6 @@ const char mandel_palette_rainbow[48] = {
 const char *const mandel_palettes[MANDEL_PALETTE_COUNT] = {
     mandelbrot_palette,
     mandel_palette_fire,
-    mandel_palette_ice,
+    mandel_palette_amethyst,
     mandel_palette_rainbow,
 };
