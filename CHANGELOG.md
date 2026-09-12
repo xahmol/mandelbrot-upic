@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.2]
+
+Fixes a genuinely missing color shade, reported after v1.0.1 shipped.
+
+- Fixed `mandel_color()`'s iteration-count-to-palette-index mapping:
+  the old formula (`1 + iter*14/32`) merged escaping iteration counts
+  0-2 into a single shade -- the only one of 14 shades covering three
+  counts instead of two, and the most common/visible one, since low
+  counts dominate any view's exterior background. Replaced with a
+  fixed lookup table (`mandel_color_table[]`) that gives counts 0 and 1
+  each their own shade. This also explains why the v1.0.1 noise-
+  speckle bug showed up as isolated "islands" rather than pixels at a
+  visible color boundary -- see `docs/MANDELBROT_ALGORITHM.md`'s
+  "Palettes" section and `CREDITS.md`.
+- Confirmed on real hardware: the previously-merged shade is now
+  visibly distinct in all 4 palettes.
+
 ## [1.0.1]
 
 Real-hardware bug-fix pass, plus a palette rework.

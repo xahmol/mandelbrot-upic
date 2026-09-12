@@ -133,13 +133,14 @@ measurement, readable via the Ultimate's own memory-read API.
 Four selectable 48-byte RGB48 gradients (`mandelbrot_palette`,
 `mandel_palette_fire`, `mandel_palette_amethyst`, `mandel_palette_rainbow`),
 cycled via `C` on the zoom screen (`zoom.c`). Each maps
-`mandel_color()`'s linear iteration-count-to-index gradient (0 = in
-the set/black, 1-14 = linearly spread across escaping iteration
-counts, 15 = reserved for the zoom feature's corner markers, white in
-every gradient by construction) to actual RGB colors.
+`mandel_color()`'s iteration-count-to-index table (0 = in the set/
+black, 1-14 spread across escaping iteration counts -- front-loaded
+toward low counts, see `mandel_color_table[]`'s own comment in
+mandelbrot.c -- 15 = reserved for the zoom feature's corner markers,
+white in every gradient by construction) to actual RGB colors.
 
 All 4 gradients were reworked 2026-09-12 (forum + direct feedback,
-two rounds) against two concrete, measured problems, not just
+three rounds) against three concrete, measured problems, not just
 eyeballed:
 
 - **Adjacent steps too close to perceive as distinct.** A forum
@@ -178,6 +179,25 @@ eyeballed:
   (most 35+; the tightest is index 1, the shared dark corner where
   amethyst, the sunset default, and fire's pure-red start all compete
   for limited room -- was as low as 21 before any of this).
+- **A shade genuinely missing, not just hard to see.** DDT (0x444454,
+  the mandelbr8 author already credited above) compared this project's
+  output against their own reference renders and reported the second-
+  lowest iteration count sharing a color with the lowest one, when it
+  should be its own distinct shade. This wasn't a palette problem --
+  `mandel_color()`'s old formula (`1 + iter*14/32`) merged iteration
+  counts 0-2 into a single color, the only one of 14 colors covering
+  three counts instead of two, and it happened to be the very first
+  (and most common: low counts dominate any view's exterior
+  background). Replaced with a fixed lookup table that front-loads
+  resolution -- counts 0 and 1 each get an exclusive color, and only
+  counts 14-31 (the busy detail band right at the fractal boundary)
+  share three-to-a-color -- see `mandel_color_table[]`'s own comment.
+  This also explained an old puzzle: isolated "noise island" pixels
+  from the (since-fixed) `fixed_sqr()`/`fixed_mul()` overflow bug sat
+  in the middle of what looked like a flat color region rather than at
+  a visible boundary, because that region secretly spanned counts 0-2
+  merged into one color -- only the miscomputed pixels showed any
+  change at all.
 
 See `mandelbrot.c`'s own comments on each array for the full
 reasoning, keyframe choices, and exact RGB-distance numbers.

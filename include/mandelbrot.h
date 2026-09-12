@@ -93,12 +93,13 @@ extern fixed_t mandel_dy;
 // Palette: caller must still push mandelbrot_palette (see below) via
 // uii_setpalette() -- this function only fills the pixel buffer.
 //
-// Iteration count -> color mapping is a fixed linear gradient (a
-// histogram-equalised remap was tried and removed -- see this file's
-// own top-of-file comment) -- color 0 is reserved for points that
-// reach MANDEL_MAX_ITER (considered "in the set"), colors 1-14 spread
-// linearly across escaping iteration counts, color 15 is reserved for
-// the zoom feature's corner markers.
+// Iteration count -> color mapping is a fixed lookup table (a
+// per-generation histogram-equalised remap was tried and removed --
+// see this file's own top-of-file comment) -- color 0 is reserved for
+// points that reach MANDEL_MAX_ITER (considered "in the set"), colors
+// 1-14 spread across escaping iteration counts (front-loaded toward
+// low counts -- see mandel_color()'s own comment in mandelbrot.c for
+// why), color 15 is reserved for the zoom feature's corner markers.
 //
 // Call after rombank_out() (upic_buffer_reloc, like upic_buffer,
 // genuinely requires MMAP_NO_ROM active to write correctly -- see

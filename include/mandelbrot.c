@@ -357,21 +357,50 @@ static unsigned char mandel_iterate(fixed_t cx, fixed_t cy, fixed_t xm, fixed_t 
     return MANDEL_MAX_ITER;
 }
 
-// Iteration count -> 4-bit color index. Crude fixed gradient (Phase 1)
-// -- see mandelbrot.h's own doc comment. 0 = in the set (black),
-// 1-15 = a linear spread across escaping iteration counts (low count
-// = escaped fast = far from the set = start of the gradient).
-// Reserves raw color 15 exclusively for the zoom feature's corner
-// markers (never assigned to any picture pixel) -- see zoom.h's own
+// Iteration count -> 4-bit color index, via a fixed lookup table (not
+// a per-generation histogram remap -- that was tried and dropped, see
+// git history/mandelbrot.h's own comment: it adapted to each view's
+// own iteration distribution and looked worse, not better). 0 = in
+// the set (black), 1-14 spread across escaping iteration counts (low
+// count = escaped fast = far from the set = start of the gradient),
+// 15 is reserved for the zoom feature's corner markers (never
+// assigned to any picture pixel) -- see zoom.h's own
 // ZOOM_MARKER_COLOR_INDEX comment for the full story. Every one of
 // the 4 selectable palettes below has its own 16th RGB entry hardcoded
 // to white at compile time, so this alone is enough to reserve it, no
 // runtime palette-color push needed.
+//
+// The table replaces an earlier straight-line formula (color =
+// 1 + iter*14/32) that was uniform in principle but, because 32
+// iteration counts don't divide evenly into 14 colors, ended up
+// silently merging THREE different counts into a single color at four
+// separate points -- and the very first of those four fell on colors
+// 1 and 2, the two lowest, most common counts covering most of any
+// view's background. Real-world confirmation (Lemon64 forum, DDT/
+// 0x444454): comparing against their own reference renderer showed a
+// visibly missing shade in exactly that spot, and it explained an
+// otherwise-puzzling earlier symptom too -- isolated "noise island"
+// pixels (from the since-fixed fixed_sqr()/fixed_mul() overflow, see
+// their own comments) that sat in the middle of a supposedly flat
+// color region rather than at a visible boundary between two colors,
+// because that region secretly spanned iter 0-2 merged into one color,
+// so only the wrongly-computed pixels showed any color change at all.
+// This table front-loads resolution instead: counts 0 and 1 each get
+// their own color, counts up to 13 get one shared with just one
+// neighbor, and only counts 14-31 (near MANDEL_MAX_ITER, the busiest,
+// most detailed band right at the fractal boundary, where per-pixel
+// variation is already highest) share three-to-a-color. Monotonic and
+// still uses every one of the 14 colors.
+static const unsigned char mandel_color_table[MANDEL_MAX_ITER] = {
+    1,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8,  9,  9,
+    9, 10, 10, 10, 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14,
+};
+
 static unsigned char mandel_color(unsigned char iter)
 {
     if (iter >= MANDEL_MAX_ITER)
         return 0;
-    return (unsigned char)(1 + ((unsigned)iter * 14) / MANDEL_MAX_ITER);
+    return mandel_color_table[iter];
 }
 
 // One entry per row -- sized for the worst case (a full, non-mirrored

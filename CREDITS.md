@@ -59,6 +59,23 @@ functions for the full root-cause writeup. DDT is also **0x444454** on
 GitHub, author of the mandelbr8 project this project's own fixed-point
 algorithm design is credited to above.
 
+## Missing color shade (v1.0.1 palette gradient)
+
+**DDT** (see above) compared this project's rendered output against
+their own [mandelbr8 reference renders](https://github.com/0x444454/mandelbr8)
+across multiple 8-bit platforms and reported that the second-lowest
+escaping iteration count was sharing a color with the lowest one
+instead of getting its own distinct shade, also pointing out that this
+explained why the earlier noise-speckle overflow bug showed up as
+isolated "islands" rather than pixels sitting at a visible color
+boundary. Root cause: `mandel_color()`'s iteration-count-to-palette-
+index formula merged three consecutive iteration counts into one color
+at that specific point (the only one of 14 colors that did), rather
+than the intended two -- fixed by replacing the formula with a fixed
+lookup table; see `mandel_color_table[]`'s own comment in
+`include/mandelbrot.c` and `docs/MANDELBROT_ALGORITHM.md`'s "Palettes"
+section for the full writeup.
+
 ## Toolchain
 
 [Oscar64](https://github.com/drmortalwombat/oscar64), a C99/C++
