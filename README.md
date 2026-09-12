@@ -10,7 +10,7 @@ into any region of the result.
 
 See `CREDITS.md` for full attribution.
 
-**Status**: v1.0.2, feature-complete and confirmed working on real
+**Status**: v1.0.3, feature-complete and confirmed working on real
 Ultimate 64 hardware (firmware 3.15 and 3.15a).
 
 **[Watch it in action](https://www.youtube.com/watch?v=fWSM7ikNegw)**

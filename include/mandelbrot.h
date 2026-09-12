@@ -97,9 +97,12 @@ extern fixed_t mandel_dy;
 // per-generation histogram-equalised remap was tried and removed --
 // see this file's own top-of-file comment) -- color 0 is reserved for
 // points that reach MANDEL_MAX_ITER (considered "in the set"), colors
-// 1-14 spread across escaping iteration counts (front-loaded toward
+// 1-15 spread across escaping iteration counts (front-loaded toward
 // low counts -- see mandel_color()'s own comment in mandelbrot.c for
-// why), color 15 is reserved for the zoom feature's corner markers.
+// why). Color 8 is also the zoom feature's own corner-marker color
+// (ZOOM_MARKER_COLOR_INDEX, zoom.h) -- no longer reserved exclusively
+// for that as of 2026-09-12, see that header's own comment for the
+// tradeoff this accepts.
 //
 // Call after rombank_out() (upic_buffer_reloc, like upic_buffer,
 // genuinely requires MMAP_NO_ROM active to write correctly -- see
@@ -110,18 +113,19 @@ void mandelbrot_generate(void);
 
 // 16-entry RGB palette matching mandelbrot_generate()'s fixed color
 // mapping -- push via uii_setpalette() after calling
-// mandelbrot_generate(). Index 0 = black ("in the set"), index 15 =
-// white (reserved for the zoom feature's corner markers, see
-// mandel_color()'s own comment). Also mandel_palettes[0] below -- kept
-// as its own named symbol too since main.c already references it
-// directly.
+// mandelbrot_generate(). Index 0 = black ("in the set"), index 8 =
+// white, this gradient's own brightest step AND the zoom feature's
+// corner-marker color (see mandel_color()'s own comment). Also
+// mandel_palettes[0] below -- kept as its own named symbol too since
+// main.c already references it directly.
 extern const char mandelbrot_palette[48];
 
 // Selectable base color gradients (2026-09-10) -- all four are 48-byte
 // RGB48 blocks in the exact format uii_setpalette() expects, index 0
-// always black ("in the set") and index 15 always white (reserved for
-// corner markers), same convention regardless of gradient. zoom.c
-// cycles through these on a keypress.
+// always black ("in the set") and index 8 always white (this
+// gradient's own brightest step, and the zoom feature's own
+// corner-marker color), same convention regardless of gradient.
+// zoom.c cycles through these on a keypress.
 #define MANDEL_PALETTE_COUNT 4
 extern const char *const mandel_palettes[MANDEL_PALETTE_COUNT];
 

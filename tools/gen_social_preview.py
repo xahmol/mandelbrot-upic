@@ -106,7 +106,7 @@ canvas.paste(logo_scaled, (logo_x, logo_y))
 
 # --- Text ---
 draw.text((TEXT_X, TITLE_Y),  "Mandelbrot Upic",        font=font_title, fill=C_CYAN)
-draw.text((TEXT_X, VERS_Y),   "v1.0.2",                 font=font_vers,  fill=C_YELLOW)
+draw.text((TEXT_X, VERS_Y),   "v1.0.3",                 font=font_vers,  fill=C_YELLOW)
 draw.text((TEXT_X, DESC_Y),        "Mandelbrot fractal",      font=font_desc, fill=C_WHITE)
 draw.text((TEXT_X, DESC_Y + 34),   "generator + interactive", font=font_desc, fill=C_WHITE)
 draw.text((TEXT_X, DESC_Y + 68),   "zoom for Ultimate 64",    font=font_desc, fill=C_WHITE)

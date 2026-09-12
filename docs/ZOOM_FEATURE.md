@@ -77,11 +77,21 @@ high-nibble packing. Each marker's 4 covered pixels are backed up
 before being overwritten and restored before the marker moves again,
 so it never leaves a permanent mark on the picture.
 
-Raw color 15 is reserved exclusively for markers -- `mandel_color()`
-(`mandelbrot.c`) only ever emits 1-14 for escaping pixels, and every
-selectable palette hardcodes its own 16th RGB entry to white at
-compile time, so pushing any palette already reserves the slot with no
-extra runtime call needed.
+Raw color 8 (white in every selectable palette by construction, and
+each one's own mid-gradient brightest point -- not an endpoint, so it
+doesn't sit directly against true black) used to be reserved
+exclusively for markers, but isn't anymore (2026-09-12):
+`mandel_color()` (`mandelbrot.c`) now emits every color 1-15 for
+escaping pixels, matching DDT/0x444454's own mandelbr8 approach of
+using every color including white for the gradient itself. A marker
+can now land on a genuinely matching picture pixel and be hard to spot
+there -- an outlined marker (see [Memory layout](#memory-layout)
+below) would close that gap, but there isn't shared-pool room for one
+right now. `ZOOM_MARKER_COLOR_INDEX` (zoom.h) stays a single constant
+because every palette deliberately puts its own white peak at the same
+index (8).
+Accepted as a real, known tradeoff; see `docs/MANDELBROT_ALGORITHM.md`'s
+"Palettes" section for the full writeup.
 
 ## Confirming a zoom
 

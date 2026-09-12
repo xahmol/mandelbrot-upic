@@ -72,9 +72,28 @@ boundary. Root cause: `mandel_color()`'s iteration-count-to-palette-
 index formula merged three consecutive iteration counts into one color
 at that specific point (the only one of 14 colors that did), rather
 than the intended two -- fixed by replacing the formula with a fixed
-lookup table; see `mandel_color_table[]`'s own comment in
+lookup table.
+
+That first table pushed every other unavoidable merge point to the
+high-iteration end instead, reasoning the busy detail band right at
+the fractal boundary would hide it better. DDT's follow-up showed
+that reasoning was wrong: a contour overlay comparing this project's
+output against mandelbr8's own, at matching iteration boundaries,
+showed multiple real color transitions simply missing in exactly that
+band. Rebalanced to spread the necessary merges evenly across the
+whole range instead of clustering them.
+
+DDT also described their own mandelbr8 coloring scheme directly:
+reserve only black, and let every other color (including white) be
+part of the escaping-iteration gradient -- "I don't reserve white
+either, I just pick the most white color of the iterations palette."
+Adopted here too: every gradient now uses a full 15 colors, reaching
+genuine white, instead of stopping short at a 14th near-white color
+with white held back exclusively for the zoom feature's corner
+markers. See `mandel_color_table[]`'s own comment in
 `include/mandelbrot.c` and `docs/MANDELBROT_ALGORITHM.md`'s "Palettes"
-section for the full writeup.
+section for the full writeup, including the marker-visibility tradeoff
+this brings back.
 
 ## Toolchain
 

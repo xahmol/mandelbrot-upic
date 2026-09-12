@@ -361,39 +361,66 @@ static unsigned char mandel_iterate(fixed_t cx, fixed_t cy, fixed_t xm, fixed_t 
 // a per-generation histogram remap -- that was tried and dropped, see
 // git history/mandelbrot.h's own comment: it adapted to each view's
 // own iteration distribution and looked worse, not better). 0 = in
-// the set (black), 1-14 spread across escaping iteration counts (low
-// count = escaped fast = far from the set = start of the gradient),
-// 15 is reserved for the zoom feature's corner markers (never
-// assigned to any picture pixel) -- see zoom.h's own
-// ZOOM_MARKER_COLOR_INDEX comment for the full story. Every one of
-// the 4 selectable palettes below has its own 16th RGB entry hardcoded
-// to white at compile time, so this alone is enough to reserve it, no
-// runtime palette-color push needed.
+// the set (black), 1-15 spread across escaping iteration counts (low
+// count = escaped fast = far from the set = start of the gradient).
 //
-// The table replaces an earlier straight-line formula (color =
-// 1 + iter*14/32) that was uniform in principle but, because 32
-// iteration counts don't divide evenly into 14 colors, ended up
-// silently merging THREE different counts into a single color at four
-// separate points -- and the very first of those four fell on colors
-// 1 and 2, the two lowest, most common counts covering most of any
-// view's background. Real-world confirmation (Lemon64 forum, DDT/
-// 0x444454): comparing against their own reference renderer showed a
-// visibly missing shade in exactly that spot, and it explained an
-// otherwise-puzzling earlier symptom too -- isolated "noise island"
-// pixels (from the since-fixed fixed_sqr()/fixed_mul() overflow, see
-// their own comments) that sat in the middle of a supposedly flat
-// color region rather than at a visible boundary between two colors,
-// because that region secretly spanned iter 0-2 merged into one color,
-// so only the wrongly-computed pixels showed any color change at all.
-// This table front-loads resolution instead: counts 0 and 1 each get
-// their own color, counts up to 13 get one shared with just one
-// neighbor, and only counts 14-31 (near MANDEL_MAX_ITER, the busiest,
-// most detailed band right at the fractal boundary, where per-pixel
-// variation is already highest) share three-to-a-color. Monotonic and
-// still uses every one of the 14 colors.
+// Colors 1-14 went through two rounds already (see below); this third
+// round (2026-09-12) extends the gradient into color 15 too, which
+// used to be reserved exclusively for the zoom feature's corner
+// markers and never emitted here -- see zoom.h's own
+// ZOOM_MARKER_COLOR_INDEX comment for the current story on that
+// tradeoff. Doing it this way (DDT/0x444454's own approach: "I don't
+// reserve white either, I just pick the most white color of the
+// iterations palette") needed the corner markers to survive landing on
+// a genuinely white picture pixel -- an outlined marker (proven
+// working on real hardware before, see zoom.c's own comment) would
+// have solved that cleanly, but the shared upiccode/modcode/moddata/
+// modbss pool has only 18 bytes free as of this build (see the
+// project's own .map file), nowhere near enough to revive it. Accepted
+// as a conscious, real (not hypothetical) risk instead: a marker can
+// now land on a matching white pixel and be hard to spot there.
+//
+// Two earlier issues, still relevant to how this table is built:
+// - A straight-line formula (color = 1 + iter*14/32) was uniform in
+//   principle but, because 32 iteration counts don't divide evenly
+//   into 14 colors, silently merged THREE different counts into a
+//   single color at four separate points -- the first of those four
+//   fell on colors 1 and 2, the two lowest, most common counts
+//   covering most of any view's background. Real-world confirmation
+//   (Lemon64 forum, DDT/0x444454): comparing against their own
+//   reference renderer showed a visibly missing shade in exactly that
+//   spot, and it explained an otherwise-puzzling earlier symptom too
+//   -- isolated "noise island" pixels (from the since-fixed
+//   fixed_sqr()/fixed_mul() overflow, see their own comments) that sat
+//   in the middle of a supposedly flat color region rather than at a
+//   visible boundary, because that region secretly spanned iter 0-2
+//   merged into one color, so only the wrongly-computed pixels showed
+//   any color change at all.
+// - The replacement table first pushed every unavoidable multi-count
+//   merge to the TOP of the range instead (reasoning the busy detail
+//   band right at the fractal boundary would hide it better) -- DDT's
+//   own follow-up, a contour overlay of this project's output against
+//   mandelbr8's, showed that was wrong: clustering every merge point
+//   in one place loses more real detail there than spreading them out
+//   ever would.
+//
+// With a 15th usable color, 32 counts into 15 colors needs only two
+// 3-count bins instead of four (32 = 13*2 + 2*3) -- spread evenly
+// rather than bunched, same reasoning as before. Monotonic and uses
+// every one of the 15 colors.
+//
+// This table only decides WHICH iteration counts share a color, not
+// which RGB value each color holds -- that's each palette array's own
+// concern below. White itself moved again shortly after this round
+// (round 3, still 2026-09-12): each palette's own comment covers why,
+// but in short, white is no longer color 15 specifically -- it's
+// whichever color index every palette agrees to put its own peak at
+// (index 8, chosen so `ZOOM_MARKER_COLOR_INDEX` can be one constant).
+// The marker-collision tradeoff described above is unaffected by
+// which numbered color white happens to be.
 static const unsigned char mandel_color_table[MANDEL_MAX_ITER] = {
-    1,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8,  9,  9,
-    9, 10, 10, 10, 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14,
+    1,  1,  2,  2,  3,  3,  4,  4,  5,  5,  5,  6,  6,  7,  7,  8,
+    8,  9,  9,  9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15,
 };
 
 static unsigned char mandel_color(unsigned char iter)
@@ -560,92 +587,132 @@ void mandelbrot_generate(void)
 //    11 shades, shouldn't that be 14?" -- confirmed by mapping a real
 //    screenshot's pixels to nearest palette index: indices 1-2 were
 //    both under 1% of any visible pixels, i.e. present but essentially
-//    invisible). Every step here, including 0->1 and 14->15, is now a
-//    deliberately-checked >=37 RGB units apart (most are 50-330) --
-//    verified by generating swatch renders and measuring adjacent
-//    distances, not eyeballed.
+//    invisible). Every step here, including both boundaries against
+//    true black (0->1 and 15->0, see point 3 below for why 15 borders
+//    black and not 8), is now a deliberately-checked >=37 RGB units
+//    apart (most are 50-330) -- verified by generating swatch renders
+//    and measuring adjacent distances, not eyeballed.
+// 3) White moved from a boundary endpoint to a genuine mid-gradient
+//    peak (2026-09-12, user request/round 2): reaching this gradient's
+//    own brightest point used to happen right where a picture pixel
+//    borders the true black interior, giving a stark white-to-black
+//    edge everywhere the fractal boundary is -- not the "brightest a
+//    little in from the edge, dimming again right at the boundary"
+//    look a sunset (or any of these four themes) actually wants. Also
+//    settled where every gradient's own peak lands: the SAME index
+//    (8) in all four, so `ZOOM_MARKER_COLOR_INDEX` (zoom.h) can be one
+//    constant instead of varying per palette. For this gradient
+//    specifically, that meant reshaping into two different arcs either
+//    side of index 8 -- cool ascent (indigo/blue/pale, indices 1-7)
+//    up to white, then a DIFFERENT warm descent (gold/orange/red,
+//    indices 9-15) back down toward black, preserving the original
+//    "sunset" identity (brightest sky glow, then the sun's own red
+//    disc, not a monotonic white climb) instead of mirroring the same
+//    arc both ways. Built from two keyframe sequences resampled at
+//    equal RGB arc-length, same technique as every gradient below.
 const char mandelbrot_palette[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
     0x19,0x04,0x27,    //  1
-    0x20,0x13,0x4a,    //  2
-    0x1b,0x29,0x68,    //  3
-    0x16,0x40,0x87,    //  4
-    0x2c,0x62,0xa4,    //  5
-    0x5b,0x8f,0xbf,    //  6
-    0x89,0xbc,0xda,    //  7
-    0xbd,0xd7,0xda,    //  8
-    0xf2,0xeb,0xcf,    //  9
-    0xff,0xd7,0x99,    // 10
-    0xff,0xb6,0x54,    // 11
-    0xff,0x8b,0x2e,    // 12
-    0xf9,0x5e,0x13,    // 13
-    0xc8,0x2d,0x0a,    // 14
-    0xff,0xff,0xff,    // 15: reserved for the zoom feature's corner markers (mandel_color() never emits this index)
+    0x1d,0x22,0x5e,    //  2
+    0x1d,0x48,0x8d,    //  3
+    0x42,0x73,0xab,    //  4
+    0x6b,0x9c,0xc5,    //  5
+    0x9a,0xc4,0xd7,    //  6
+    0xce,0xe5,0xe3,    //  7
+    0xff,0xff,0xff,    //  8: this gradient's own peak, also the zoom feature's corner-marker color (ZOOM_MARKER_COLOR_INDEX)
+    0xf4,0xe8,0xc6,    //  9
+    0xff,0xd1,0x8c,    // 10
+    0xff,0xb5,0x54,    // 11
+    0xfc,0x86,0x2c,    // 12
+    0xdd,0x52,0x18,    // 13
+    0xb6,0x28,0x09,    // 14
+    0x7a,0x15,0x05,    // 15
 };
 
-// Black -> deep red -> orange -> yellow -> white. Same cosmetic-choice
-// basis as mandelbrot_palette above -- and the same index-1-too-close-
-// to-black issue that gradient had (fixed 2026-09-12, same reasoning:
-// every step, including 0->1, now checked >=28 RGB units apart).
+// Black -> deep red -> orange -> gold -> white (2026-09-12, round 2:
+// symmetric "mountain" shape peaking at index 8, same shared-peak-index
+// reasoning as mandelbrot_palette's own comment above) -> back down
+// through gold -> orange -> deep red before black. A literal mirror of
+// its own ascending arc (indices 9-15 = indices 7-1 in reverse) --
+// unlike mandelbrot_palette's two-different-arcs design, a symmetric
+// "hot core cooling back to embers on both sides" reads correctly for
+// fire specifically, and guarantees identical gap sizes on both slopes
+// by construction. Same index-1-too-close-to-black issue as
+// mandelbrot_palette had, fixed the same way (every step >=28 RGB
+// units apart, including 0->1 and 15->0).
 const char mandel_palette_fire[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
     0x24,0x00,0x00,    //  1
-    0x45,0x01,0x00,    //  2
-    0x64,0x03,0x00,    //  3
-    0x83,0x08,0x00,    //  4
-    0xa2,0x11,0x00,    //  5
-    0xc1,0x1c,0x00,    //  6
-    0xde,0x35,0x00,    //  7
-    0xfc,0x4d,0x00,    //  8
-    0xff,0x6b,0x00,    //  9
-    0xff,0x8a,0x00,    // 10
-    0xff,0xa8,0x13,    // 11
-    0xff,0xc7,0x27,    // 12
-    0xff,0xde,0x5e,    // 13
-    0xff,0xf5,0x96,    // 14
-    0xff,0xff,0xff,    // 15
+    0x77,0x07,0x00,    //  2
+    0xc5,0x26,0x00,    //  3
+    0xf2,0x68,0x00,    //  4
+    0xff,0xb7,0x10,    //  5
+    0xff,0xdb,0x5b,    //  6
+    0xff,0xed,0xad,    //  7
+    0xff,0xff,0xff,    //  8: white-hot -- this gradient's own peak, also the zoom feature's corner-marker color
+    0xff,0xed,0xad,    //  9
+    0xff,0xdb,0x5b,    // 10
+    0xff,0xb7,0x10,    // 11
+    0xf2,0x68,0x00,    // 12
+    0xc5,0x26,0x00,    // 13
+    0x77,0x07,0x00,    // 14
+    0x24,0x00,0x00,    // 15
 };
 
-// "Amethyst": black -> deep violet -> vivid magenta -> hot pink -> pale
-// pink. Replaced the teal/mint "glacier" gradient (2026-09-12, same
-// session) on direct feedback: glacier read as flat/boring next to the
-// others, and an earlier from-scratch purple/magenta design (also
-// called "amethyst" before it got swapped out for glacier) was
-// preferred -- brought back here, pushed further from its muted violet
-// start toward more saturated, brighter magenta/pink throughout per
-// that feedback ("move from the purples to the more brights"). Built
-// from 9 keyframes and resampled at equal RGB arc-length (not equal
-// blend fraction) so the total color distance spreads evenly across
-// all 15 steps regardless of how the hue curves -- every interior step
-// is >=30 RGB units from its neighbor (most 31-35), matching the other
-// three gradients' standard. Index 1 was deliberately placed to stay
-// clear of both mandelbrot_palette's indigo start and mandel_palette_
-// fire's pure-red start at once (their shared dark corner leaves little
-// room: pushing further from one pushes closer to the other) -- best
-// achievable while still reading as violet/magenta rather than navy or
-// maroon was ~32 RGB units from each; every other index is >=35 units
-// from its same-position counterpart in every other palette.
+// "Amethyst": black -> deep violet -> vivid magenta -> hot pink ->
+// white (2026-09-12, round 2: symmetric mountain shape peaking at
+// index 8, mirrored back down through pink -> magenta -> violet before
+// black -- same reasoning as mandel_palette_fire's own comment above,
+// a bright gem-flash surrounded symmetrically by deepening violet on
+// both sides). Replaced the teal/mint "glacier" gradient (2026-09-12,
+// round 1, same session) on direct feedback: glacier read as flat/
+// boring next to the others, and an earlier from-scratch purple/
+// magenta design (also called "amethyst" before it got swapped out for
+// glacier) was preferred -- brought back, pushed further from its
+// muted violet start toward more saturated, brighter magenta/pink
+// throughout per that feedback ("move from the purples to the more
+// brights"). Built from keyframes resampled at equal RGB arc-length so
+// the color spread stays even regardless of how the hue curves --
+// every interior step is >=62 RGB units from its neighbor. Index 1 was
+// deliberately placed to stay clear of both mandelbrot_palette's
+// indigo start and mandel_palette_fire's pure-red start at once (their
+// shared dark corner leaves little room: pushing further from one
+// pushes closer to the other) -- best achievable while still reading
+// as violet/magenta rather than navy or maroon was ~32 RGB units from
+// each.
 const char mandel_palette_amethyst[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
     0x37,0x00,0x32,    //  1
-    0x4d,0x00,0x48,    //  2
-    0x64,0x00,0x5f,    //  3
-    0x7d,0x00,0x73,    //  4
-    0x96,0x00,0x87,    //  5
-    0xb0,0x00,0x98,    //  6
-    0xcb,0x02,0xa8,    //  7
-    0xe8,0x0c,0xae,    //  8
-    0xfc,0x23,0xa8,    //  9
-    0xfe,0x43,0xa6,    // 10
-    0xff,0x62,0xac,    // 11
-    0xff,0x80,0xb7,    // 12
-    0xff,0x9c,0xc4,    // 13
-    0xff,0xb9,0xd2,    // 14
-    0xff,0xff,0xff,    // 15
+    0x68,0x00,0x62,    //  2
+    0x9f,0x00,0x8c,    //  3
+    0xd5,0x0f,0xa8,    //  4
+    0xfe,0x46,0xa7,    //  5
+    0xff,0x87,0xbc,    //  6
+    0xff,0xc1,0xe1,    //  7
+    0xff,0xff,0xff,    //  8: this gradient's own peak, also the zoom feature's corner-marker color
+    0xff,0xc1,0xe1,    //  9
+    0xff,0x87,0xbc,    // 10
+    0xfe,0x46,0xa7,    // 11
+    0xd5,0x0f,0xa8,    // 12
+    0x9f,0x00,0x8c,    // 13
+    0x68,0x00,0x62,    // 14
+    0x37,0x00,0x32,    // 15
 };
 
 // Classic fractal-viewer rainbow band: red -> orange -> yellow ->
-// green -> cyan -> blue -> violet -> magenta, white cap.
+// green -> cyan, white flash, blue -> violet -> magenta -> pink,
+// back toward red. The "white cap" this array always ended on
+// (comment predates the 2026-09-12 palette work) moved to a genuine
+// mid-gradient flash at index 8 instead (round 2, shared-peak-index
+// reasoning -- see mandelbrot_palette's own comment above), splitting
+// the original 14 fully-saturated hues into two 7-color arcs on either
+// side rather than mirroring or reshaping either arc -- the full
+// original hue sequence survives unchanged, just interrupted once by
+// white in the middle, exactly like a literal rainbow's own bright
+// central flash. Every other color stays a fully-saturated hue by
+// design (unlike the other three gradients, this one doesn't
+// monotonically brighten toward either end -- it cycles through hues
+// at roughly constant brightness on both sides of the flash).
 const char mandel_palette_rainbow[48] = {
     0x00,0x00,0x00,    //  0: black (in the set)
     0xff,0x00,0x00,    //  1
@@ -655,14 +722,14 @@ const char mandel_palette_rainbow[48] = {
     0x60,0xff,0x00,    //  5
     0x00,0xff,0x40,    //  6
     0x00,0xff,0xc0,    //  7
-    0x00,0xc0,0xff,    //  8
-    0x00,0x60,0xff,    //  9
-    0x40,0x00,0xff,    // 10
-    0xa0,0x00,0xff,    // 11
-    0xff,0x00,0xe0,    // 12
-    0xff,0x00,0x80,    // 13
-    0xff,0x40,0x40,    // 14
-    0xff,0xff,0xff,    // 15
+    0xff,0xff,0xff,    //  8: mid-cycle white flash, also the zoom feature's corner-marker color
+    0x00,0xc0,0xff,    //  9
+    0x00,0x60,0xff,    // 10
+    0x40,0x00,0xff,    // 11
+    0xa0,0x00,0xff,    // 12
+    0xff,0x00,0xe0,    // 13
+    0xff,0x00,0x80,    // 14
+    0xff,0x40,0x40,    // 15
 };
 
 // Selectable gradients -- see mandelbrot.h's own comment. An array of

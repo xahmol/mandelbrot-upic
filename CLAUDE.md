@@ -13,7 +13,7 @@ interactively pan and zoom into any region of the result. Targets
 firmware) -- in practice this means an Ultimate 64 Elite 2 for now,
 since the corresponding C64U firmware hasn't been released yet.
 
-**Status**: v1.0.2, feature-complete. See `README.md` for controls and
+**Status**: v1.0.3, feature-complete. See `README.md` for controls and
 installation, `docs/ARCHITECTURE.md` for the project layout,
 `docs/MANDELBROT_ALGORITHM.md` for the fractal generator's design,
 `docs/UPIC_VIEWER.md` for the display technique, and

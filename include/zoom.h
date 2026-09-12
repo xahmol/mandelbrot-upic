@@ -15,11 +15,24 @@ this version instead of rediscovering them:
     sprites cannot be composited at all while this project's DEN=0
     border-racing display technique is active. See zoom.c's own
     comment (above zoom_pixel_addr()) for the full writeup.
-  - ZOOM_MARKER_COLOR_INDEX (below) is a raw color index reserved
-    exclusively for these markers, never assigned to any picture pixel
-    -- mandel_color() (mandelbrot.c) only ever emits 1-14, and every
-    selectable palette hardcodes its own 16th RGB entry to white at
-    compile time.
+  - ZOOM_MARKER_COLOR_INDEX (below) USED TO BE reserved exclusively
+    for these markers -- mandel_color() (mandelbrot.c) capped its own
+    gradient at color 14, leaving 15 (every selectable palette's own
+    16th RGB entry, hardcoded to white at compile time) genuinely
+    unused by any picture pixel. That changed 2026-09-12: the gradient
+    now uses white too (DDT/0x444454's own approach, see
+    mandel_color_table[]'s own comment for the full writeup and why),
+    so a marker CAN now land on a picture pixel of its own exact color
+    and be hard to spot there. A 1px-outlined marker would close that
+    gap (see zoom.c's own comment above zoom_marker_draw() -- a version
+    like that was already built and confirmed working on real hardware
+    once) but there isn't shared-pool memory to bring it back right
+    now; accepted as a real, known tradeoff instead. (White itself also
+    moved, same day: rather than sitting at the very end of each
+    gradient right where it borders true black, it's now each
+    palette's own mid-gradient brightest point, at the SAME index --
+    8 -- in all four, which is why ZOOM_MARKER_COLOR_INDEX can still be
+    one constant instead of varying per palette.)
 
 Two-mode design -- "browse" (default after generation: WASD/cursor
 pans the current view, 'O' zooms out one notch, clamped to the default
@@ -45,10 +58,14 @@ exit path).
 #define ZOOM_CONFIRMED       1
 #define ZOOM_PALETTE_CHANGED 2
 
-// Color index reserved EXCLUSIVELY for the corner markers, never
-// assigned to any picture pixel -- see this header's own opening
-// comment and mandelbrot.c's own mandel_color()/palette comments.
-#define ZOOM_MARKER_COLOR_INDEX 15
+// Color index used for the corner markers -- no longer guaranteed
+// absent from the picture itself (mandel_color() can emit it too,
+// 2026-09-12 onward), see this header's own opening comment and
+// mandelbrot.c's own mandel_color()/palette comments. Index 8 is
+// every selectable palette's own shared mid-gradient white peak, not
+// index 15 -- deliberately the same index in all four so this can
+// stay one constant.
+#define ZOOM_MARKER_COLOR_INDEX 8
 
 // Runs browse mode and (once 'Z' is pressed) box mode, looping forever
 // -- there's no way out of this call other than one of the ZOOM_*
