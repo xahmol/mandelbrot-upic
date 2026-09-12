@@ -46,8 +46,8 @@ itself based on Ultimate II Dos Lib by
 
 ## Fixed-point overflow fix (v1.0.0 noise speckles)
 
-A [Lemon64 forum thread](https://www.lemon64.com/forum/viewtopic.php?t=85911)
-reply challenged an earlier diagnosis of visible noise speckles in this
+**DDT** ([Lemon64 forum thread](https://www.lemon64.com/forum/viewtopic.php?t=85911))
+challenged an earlier diagnosis of visible noise speckles in this
 project's rendered output, arguing the multiply routine rather than the
 add/sub steps was the likely cause, and included their own per-pixel
 max-magnitude analysis of the same default view. That analysis was the
@@ -55,9 +55,9 @@ right kind of evidence, even though the fix ended up being about where
 Q5.11 values get truncated back to 16 bits (in `fixed_sqr()`/`fixed_mul()`'s
 own return path), not the quarter-square multiply algorithm itself, which
 remains exact -- see `include/mandelbrot.c`'s own comments on both
-functions for the full root-cause writeup. (Not fully certain of the
-replying poster's exact forum handle from the screenshot this was reported
-through -- happy to credit by name here if confirmed.)
+functions for the full root-cause writeup. DDT is also **0x444454** on
+GitHub, author of the mandelbr8 project this project's own fixed-point
+algorithm design is credited to above.
 
 ## Toolchain
 
